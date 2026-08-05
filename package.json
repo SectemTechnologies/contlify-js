@@ -1,7 +1,7 @@
 {
   "name": "contlify",
-  "version": "0.1.0",
-  "description": "Standardized publishing API engine and adapter contract for Next.js websites",
+  "version": "1.0.0",
+  "description": "Standardized blog publishing engine and database adapter API framework for Next.js websites",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -21,6 +21,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SectemTechnologies/Next.js-Package.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SectemTechnologies/Next.js-Package/issues"
+  },
+  "homepage": "https://github.com/SectemTechnologies/Next.js-Package#readme",
   "keywords": [
     "contlify",
     "cms",
@@ -28,10 +36,14 @@
     "nextjs",
     "blog",
     "headless-cms",
-    "api-adapter"
+    "api-adapter",
+    "typescript"
   ],
-  "author": "",
+  "author": "Sectem Technologies",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@types/node": "^20.14.12",
     "tsup": "^8.2.4",
