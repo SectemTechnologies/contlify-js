@@ -1,0 +1,42 @@
+{
+  "name": "contlify",
+  "version": "0.1.0",
+  "description": "Standardized publishing API engine and adapter contract for Next.js websites",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "contlify",
+    "cms",
+    "publishing",
+    "nextjs",
+    "blog",
+    "headless-cms",
+    "api-adapter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
