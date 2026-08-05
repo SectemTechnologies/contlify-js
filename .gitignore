@@ -3,4 +3,4 @@ dist/
 *.log
 .DS_Store
 integration-test-site
-tests
+*.tgz

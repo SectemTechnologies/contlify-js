@@ -30,10 +30,12 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
 
   const payload = validationResult.data;
 
-  // 2. Slug generation
+  // 2. Slug generation (Sanitizes custom_slug or falls back to title)
   const rawCustomSlug = payload.custom_slug ?? payload.slug;
-  const customSlug = typeof rawCustomSlug === "string" ? rawCustomSlug.trim() : undefined;
-  const slug = customSlug && customSlug !== "" ? customSlug : slugify(payload.title);
+  const customSlugStr = typeof rawCustomSlug === "string" ? rawCustomSlug.trim() : undefined;
+  const slug = customSlugStr && customSlugStr !== ""
+    ? slugify(customSlugStr)
+    : slugify(payload.title);
 
   // 3. Post URL Resolution
   let postUrl = "";
@@ -61,7 +63,7 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
   const enrichedPayload = {
     ...payload,
     slug,
-    custom_slug: customSlug,
+    custom_slug: slug,
     post_url: postUrl,
   };
 
