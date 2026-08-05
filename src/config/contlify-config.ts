@@ -1,4 +1,5 @@
 import type { ContlifyAdapter } from "../adapters/adapter.interface.js";
+import type { Post } from "../types/domain.js";
 
 /**
  * Custom logger contract interface allowing users to inject pino, winston, or custom loggers.
@@ -12,8 +13,9 @@ export interface LoggerContract {
 
 /**
  * Function contract for dynamic post URL generation.
+ * Accepts either post entity or slug.
  */
-export type UrlBuilderFunction = (slug: string, postType?: string) => string;
+export type UrlBuilderFunction = (post: Post | { slug: string; [key: string]: unknown }) => string;
 
 /**
  * Feature flag options for experimental features or enabling optional routes.
@@ -32,13 +34,24 @@ export interface FeatureFlags {
 export interface ContlifyConfig {
   /**
    * Secret API key used for authenticating incoming publishing requests.
+   * If omitted, defaults to process.env.CONTLIFY_API_KEY.
    */
-  apiKey: string;
+  apiKey?: string;
 
   /**
    * Custom database/ORM storage adapter implementing ContlifyAdapter interface.
    */
   adapter?: ContlifyAdapter;
+
+  /**
+   * Custom URL resolver function constructing public post link.
+   */
+  getPostUrl?: UrlBuilderFunction;
+
+  /**
+   * Alias for getPostUrl for backward compatibility.
+   */
+  buildPostUrl?: UrlBuilderFunction;
 
   /**
    * Base route prefix for Contlify API endpoints.
@@ -52,11 +65,6 @@ export interface ContlifyConfig {
   logger?: LoggerContract;
 
   /**
-   * Custom URL resolver function for post links.
-   */
-  buildPostUrl?: UrlBuilderFunction;
-
-  /**
    * Feature flags to enable or disable specific features.
    */
   featureFlags?: FeatureFlags;
@@ -65,8 +73,9 @@ export interface ContlifyConfig {
 /**
  * Resolved internal configuration with guaranteed default values.
  */
-export interface ResolvedContlifyConfig extends Required<Omit<ContlifyConfig, "adapter" | "buildPostUrl" | "logger">> {
+export interface ResolvedContlifyConfig extends Required<Omit<ContlifyConfig, "adapter" | "getPostUrl" | "buildPostUrl" | "logger">> {
   adapter?: ContlifyAdapter;
   logger: LoggerContract;
+  getPostUrl?: UrlBuilderFunction;
   buildPostUrl?: UrlBuilderFunction;
 }

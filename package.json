@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [
     "contlify",
@@ -34,7 +35,8 @@
   "devDependencies": {
     "@types/node": "^20.14.12",
     "tsup": "^8.2.4",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   },
   "engines": {
     "node": ">=18.0.0"

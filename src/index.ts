@@ -7,6 +7,7 @@
 // Primary Entry Point
 export { createContlifyHandler, type ContlifyHandler } from "./core/handler.js";
 export { RequestContext } from "./core/request-context.js";
+export { handleCreatePost } from "./core/posts-handler.js";
 
 // Configuration System
 export type {
@@ -70,15 +71,25 @@ export {
   type ApiErrorDetail,
 } from "./responses/index.js";
 
+// Middleware Architecture
+export {
+  createAuthMiddleware,
+  composePipeline,
+  type ContlifyMiddleware,
+} from "./middleware/index.js";
+
 // Routing Infrastructure
 export { Router } from "./routing/router.js";
 export type { IRouter } from "./routing/router.interface.js";
 export type { RouteContext } from "./routing/route-context.js";
 export type { RouteDefinition, RouteHandler, RouteMatchResult } from "./routing/route.interface.js";
 
-// Authentication & Validation Contracts (Extension Hooks for Future Phases)
+// Authentication & Validation
+export { ApiKeyAuthStrategy } from "./authentication/api-key-auth.js";
 export type { AuthStrategyContract, AuthResult } from "./authentication/auth.interface.js";
+export { PublishPayloadValidator } from "./validation/publish-payload-validator.js";
 export type { ValidatorContract, ValidationResult } from "./validation/validator.interface.js";
 
 // Utilities
+export { slugify } from "./utils/slugify.js";
 export { HttpStatus, type HttpStatusCode } from "./utils/http-status.js";

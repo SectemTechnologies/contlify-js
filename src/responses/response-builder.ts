@@ -1,5 +1,4 @@
 import {
-  type ApiResponse,
   type ApiSuccessResponse,
   type ApiErrorResponse,
   type ResponseMeta,
@@ -52,8 +51,8 @@ export class ResponseBuilder {
   /**
    * Wraps a payload into a Web Standard Response object with JSON headers.
    */
-  public static toJsonResponse<T>(
-    body: ApiResponse<T>,
+  public static toJsonResponse<T = unknown>(
+    body: T,
     statusCode: HttpStatusCode = HttpStatus.OK,
     headers: Record<string, string> = {}
   ): Response {
