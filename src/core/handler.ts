@@ -3,6 +3,11 @@ import { resolveConfig } from "../config/default-config.js";
 import { Router } from "../routing/router.js";
 import { RequestContext } from "./request-context.js";
 import { handleCreatePost } from "./posts-handler.js";
+import { handleUpdatePost } from "./update-post-handler.js";
+import { handleValidate } from "./validate-handler.js";
+import { handleGetAuthors } from "./authors-handler.js";
+import { handleGetCategories } from "./categories-handler.js";
+import { handleGetTags } from "./tags-handler.js";
 import { createAuthMiddleware, composePipeline } from "../middleware/index.js";
 
 /**
@@ -21,19 +26,70 @@ export function createContlifyHandler(userConfig: ContlifyConfig = {}): Contlify
   const config = resolveConfig(userConfig);
   const router = new Router();
 
-  // Create authentication middleware instance
+  // Shared authentication middleware pipeline
   const authMiddleware = createAuthMiddleware();
 
-  // ------------------------------------------------------------------
-  // Phase 2 Route Registration: POST /posts
-  // ------------------------------------------------------------------
-  const protectedCreatePostHandler = composePipeline([authMiddleware], handleCreatePost);
+  // Helper to wrap route handlers with authentication pipeline
+  const protectedRoute = (handler: Parameters<typeof composePipeline>[1]) =>
+    composePipeline([authMiddleware], handler);
 
+  // ------------------------------------------------------------------
+  // Phase 3 Complete HTTP Route Registration Matrix
+  // ------------------------------------------------------------------
+
+  // 1. Health & Configuration Validation: GET /validate
+  router.register(
+    "GET",
+    "/validate",
+    protectedRoute(handleValidate),
+    "Validates Contlify configuration, API key authentication, and database adapter health"
+  );
+
+  // 2. Publish Post: POST /posts (Phase 2 integration preserved)
   router.register(
     "POST",
     "/posts",
-    protectedCreatePostHandler,
-    "Publish or update a blog post with authentication and payload validation"
+    protectedRoute(handleCreatePost),
+    "Publish a new blog post"
+  );
+
+  // 3. Update Post: PATCH /posts/:id and PUT /posts/:id
+  router.register(
+    "PATCH",
+    "/posts/:id",
+    protectedRoute(handleUpdatePost),
+    "Partial update of an existing post by ID or slug"
+  );
+
+  router.register(
+    "PUT",
+    "/posts/:id",
+    protectedRoute(handleUpdatePost),
+    "Full update or replacement of an existing post by ID or slug"
+  );
+
+  // 4. Authors Taxonomy: GET /authors
+  router.register(
+    "GET",
+    "/authors",
+    protectedRoute(handleGetAuthors),
+    "Fetch list of post authors from adapter"
+  );
+
+  // 5. Categories Taxonomy: GET /categories
+  router.register(
+    "GET",
+    "/categories",
+    protectedRoute(handleGetCategories),
+    "Fetch list of post categories from adapter"
+  );
+
+  // 6. Tags Taxonomy: GET /tags
+  router.register(
+    "GET",
+    "/tags",
+    protectedRoute(handleGetTags),
+    "Fetch list of post tags from adapter"
   );
 
   // Main HTTP execution handler
