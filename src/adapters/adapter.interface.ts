@@ -2,6 +2,8 @@ import type { PostAdapterContract } from "./post-adapter.js";
 import type { AuthorAdapterContract } from "./author-adapter.js";
 import type { CategoryAdapterContract } from "./category-adapter.js";
 import type { TagAdapterContract } from "./tag-adapter.js";
+import type { PublishPostPayload, PublishResponse } from "../types/payload.js";
+import type { Post } from "../types/domain.js";
 
 /**
  * Main Database Adapter interface for Contlify.
@@ -9,22 +11,32 @@ import type { TagAdapterContract } from "./tag-adapter.js";
  */
 export interface ContlifyAdapter {
   /**
-   * Post persistence operations (required).
+   * Direct createPost method on adapter root.
    */
-  posts: PostAdapterContract;
+  createPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
-   * Author operations (optional).
+   * Direct upsertPost method on adapter root.
+   */
+  upsertPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
+
+  /**
+   * Post persistence operations object.
+   */
+  posts?: PostAdapterContract;
+
+  /**
+   * Author operations object (optional).
    */
   authors?: AuthorAdapterContract;
 
   /**
-   * Category operations (optional).
+   * Category operations object (optional).
    */
   categories?: CategoryAdapterContract;
 
   /**
-   * Tag operations (optional).
+   * Tag operations object (optional).
    */
   tags?: TagAdapterContract;
 

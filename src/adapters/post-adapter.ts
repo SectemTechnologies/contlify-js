@@ -7,22 +7,27 @@ import type { PublishPostPayload, PublishResponse } from "../types/payload.js";
  */
 export interface PostAdapterContract {
   /**
-   * Retrieves a post by its unique slug.
+   * Creates a post from a validated publish payload.
    */
-  getPostBySlug(slug: string): Promise<Post | null>;
+  createPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
    * Creates or updates a post from a publish payload.
    */
-  upsertPost(payload: PublishPostPayload): Promise<PublishResponse>;
+  upsertPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
-   * Unpublishes (sets status to draft or unlisted) a post by slug or ID.
+   * Retrieves a post by its unique slug.
    */
-  unpublishPost(identifier: { id?: string; slug?: string }): Promise<boolean>;
+  getPostBySlug?(slug: string): Promise<Post | null>;
+
+  /**
+   * Unpublishes a post by slug or ID.
+   */
+  unpublishPost?(identifier: { id?: string; slug?: string }): Promise<boolean>;
 
   /**
    * Deletes a post completely by slug or ID.
    */
-  deletePost(identifier: { id?: string; slug?: string }): Promise<boolean>;
+  deletePost?(identifier: { id?: string; slug?: string }): Promise<boolean>;
 }

@@ -21,15 +21,21 @@ export const defaultLogger: LoggerContract = {
 };
 
 /**
- * Resolves user config against default values.
+ * Resolves user config against default values and environment variables.
  */
 export function resolveConfig(config: ContlifyConfig): ResolvedContlifyConfig {
+  const envApiKey = typeof process !== "undefined" ? process?.env?.CONTLIFY_API_KEY : undefined;
+  const apiKey = config.apiKey || envApiKey || "";
+
+  const urlResolver = config.getPostUrl ?? config.buildPostUrl;
+
   return {
-    apiKey: config.apiKey,
+    apiKey,
     adapter: config.adapter,
     apiPathPrefix: config.apiPathPrefix ?? "/api/contlify",
     logger: config.logger ?? defaultLogger,
-    buildPostUrl: config.buildPostUrl,
+    getPostUrl: urlResolver,
+    buildPostUrl: urlResolver,
     featureFlags: {
       enableAuthorEndpoints: true,
       enableCategoryEndpoints: true,
