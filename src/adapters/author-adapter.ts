@@ -5,7 +5,8 @@ import type { AuthorPayload } from "../types/payload.js";
  * Storage adapter contract for managing Author operations.
  */
 export interface AuthorAdapterContract {
-  getAuthorBySlug(slug: string): Promise<Author | null>;
-  upsertAuthor(payload: AuthorPayload): Promise<Author>;
-  deleteAuthor(slug: string): Promise<boolean>;
+  getAuthorBySlug?(slug: string): Promise<Author | null>;
+  getAuthors?(): Promise<Author[] | Record<string, unknown>[]>;
+  upsertAuthor?(payload: AuthorPayload): Promise<Author>;
+  deleteAuthor?(slug: string): Promise<boolean>;
 }

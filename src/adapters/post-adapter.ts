@@ -12,6 +12,14 @@ export interface PostAdapterContract {
   createPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
+   * Updates an existing post by ID or slug.
+   */
+  updatePost?(
+    id: string,
+    payload: Partial<PublishPostPayload> & Record<string, unknown>
+  ): Promise<PublishResponse | Post | Record<string, unknown>>;
+
+  /**
    * Creates or updates a post from a publish payload.
    */
   upsertPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;

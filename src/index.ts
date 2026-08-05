@@ -4,10 +4,15 @@
  * @module contlify
  */
 
-// Primary Entry Point
+// Primary Entry Point & Handlers
 export { createContlifyHandler, type ContlifyHandler } from "./core/handler.js";
 export { RequestContext } from "./core/request-context.js";
 export { handleCreatePost } from "./core/posts-handler.js";
+export { handleUpdatePost } from "./core/update-post-handler.js";
+export { handleValidate } from "./core/validate-handler.js";
+export { handleGetAuthors } from "./core/authors-handler.js";
+export { handleGetCategories } from "./core/categories-handler.js";
+export { handleGetTags } from "./core/tags-handler.js";
 
 // Configuration System
 export type {
@@ -88,6 +93,8 @@ export type { RouteDefinition, RouteHandler, RouteMatchResult } from "./routing/
 export { ApiKeyAuthStrategy } from "./authentication/api-key-auth.js";
 export type { AuthStrategyContract, AuthResult } from "./authentication/auth.interface.js";
 export { PublishPayloadValidator } from "./validation/publish-payload-validator.js";
+export { UpdatePayloadValidator } from "./validation/update-payload-validator.js";
+export { RouteParamValidator } from "./validation/route-param-validator.js";
 export type { ValidatorContract, ValidationResult } from "./validation/validator.interface.js";
 
 // Utilities
