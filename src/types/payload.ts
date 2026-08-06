@@ -92,18 +92,3 @@ export interface TagPayload {
   name: string;
   description?: string;
 }
-
-/**
- * Validation check endpoint result.
- */
-export interface ValidateResult {
-  valid: boolean;
-  version: string;
-  adapterName?: string;
-  capabilities?: {
-    authors: boolean;
-    categories: boolean;
-    tags: boolean;
-    customFields: boolean;
-  };
-}

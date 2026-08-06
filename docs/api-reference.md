@@ -44,13 +44,20 @@ curl -X GET "https://yourwebsite.com/api/contlify/validate" \
 ```
 
 ### Success Response (200 OK)
+
+WordPress / Contlify-compatible top-level fields (used by Contlify “Test connection”):
+
 ```json
 {
+  "status": "success",
+  "message": "API key is valid",
   "success": true,
-  "data": {
-    "valid": true,
-    "version": "0.1.0",
-    "status": "healthy",
+  "valid": true,
+  "meta_data": {
+    "site_name": "My Blog",
+    "site_url": "https://www.example.com",
+    "platform": "nextjs",
+    "package_version": "1.0.0",
     "adapterConnected": true,
     "capabilities": {
       "posts": true,
@@ -59,11 +66,22 @@ curl -X GET "https://yourwebsite.com/api/contlify/validate" \
       "tags": true
     }
   },
-  "meta": {
-    "timestamp": "2026-08-06T00:00:00.000Z"
+  "data": {
+    "valid": true,
+    "version": "1.0.0",
+    "status": "healthy",
+    "adapterConnected": true,
+    "capabilities": {
+      "posts": true,
+      "authors": true,
+      "categories": true,
+      "tags": true
+    }
   }
 }
 ```
+
+Set optional `siteName` / `siteUrl` (or `CONTLIFY_SITE_URL`) on `createContlifyHandler` to populate `meta_data`.
 
 ---
 

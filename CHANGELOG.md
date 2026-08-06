@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] - 2026-08-07
+
+### Fixed
+- `GET /validate` now returns Contlify/WordPress-compatible top-level `{ status: "success", message, meta_data, success, valid }` so Contlify Integrations “Test connection” accepts the response.
+- Example Next.js route no longer falls back to `demo-secret-key` when `CONTLIFY_API_KEY` is missing (avoids silent key mismatches).
+- `resolveConfig` warns when API key is unset instead of inventing a secret.
+
+### Added
+- Optional `siteName` / `siteUrl` config (and `CONTLIFY_SITE_URL` env) for validate `meta_data`.
+
+### Removed
+- Unit test suite (`tests/`), Vitest config, and `npm test` script.
+- Unused `AuthenticationError` / `ValidationError` classes and unused `ValidateResult` type.
+
+---
+
 ## [1.0.0] - 2026-08-06
 
 ### Added

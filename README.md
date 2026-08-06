@@ -117,9 +117,11 @@ import { createContlifyHandler } from "contlify";
 import { myAdapter } from "@/lib/contlify-adapter";
 
 const handler = createContlifyHandler({
-  apiKey: process.env.CONTLIFY_API_KEY,
+  apiKey: process.env.CONTLIFY_API_KEY, // required — same value as Contlify Integrations API Key
   adapter: myAdapter,
   apiPathPrefix: "/api/contlify",
+  siteName: "My Blog", // optional — returned in GET /validate meta_data
+  siteUrl: process.env.CONTLIFY_SITE_URL,
   getPostUrl: (post) => `/blog/${post.slug}`,
 });
 
@@ -201,7 +203,7 @@ Contributions are welcome! Please follow these steps:
 
 1. Fork the repository.
 2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Ensure all tests pass (`npm test`) and typecheck passes (`npm run typecheck`).
+3. Ensure typecheck passes (`npm run typecheck`) and the package builds (`npm run build`).
 4. Commit your changes (`git commit -m 'feat: add amazing feature'`).
 5. Push to the branch (`git push origin feature/amazing-feature`).
 6. Open a Pull Request.

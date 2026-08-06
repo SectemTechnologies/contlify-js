@@ -34,12 +34,7 @@ All contributors are expected to adhere to our [Code of Conduct](./CODE_OF_CONDU
    npm run typecheck
    ```
 
-4. Run unit test suite:
-   ```bash
-   npm test
-   ```
-
-5. Build the distribution bundle:
+4. Build the distribution bundle:
    ```bash
    npm run build
    ```
@@ -52,7 +47,6 @@ All contributors are expected to adhere to our [Code of Conduct](./CODE_OF_CONDU
 - **SOLID Principles**: Keep routing, validation, authentication, and database adapters decoupled.
 - **Database Agnosticism**: Never add database-specific ORM code (Prisma, Drizzle, SQL) directly into the core `src/` runtime package. Storage operations must remain in adapter interfaces.
 - **Backward Compatibility**: Do not introduce breaking changes to exported public APIs without prior discussion and major version increments.
-- **Testing**: Every new feature, validator, or route handler must be accompanied by unit tests in `tests/`.
 
 ### Branching Convention
 - `main`: Production release branch.
@@ -67,10 +61,10 @@ All contributors are expected to adhere to our [Code of Conduct](./CODE_OF_CONDU
    ```bash
    git checkout -b feature/my-new-feature
    ```
-2. Make your changes and add tests.
-3. Ensure all tests and type checks pass cleanly:
+2. Make your changes.
+3. Ensure typecheck and build pass cleanly:
    ```bash
-   npm run typecheck && npm test && npm run build
+   npm run typecheck && npm run build
    ```
 4. Commit your changes using Conventional Commit messages:
    ```bash

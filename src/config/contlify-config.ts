@@ -68,14 +68,27 @@ export interface ContlifyConfig {
    * Feature flags to enable or disable specific features.
    */
   featureFlags?: FeatureFlags;
+
+  /**
+   * Optional display name returned in GET /validate meta_data (Contlify Test connection).
+   */
+  siteName?: string;
+
+  /**
+   * Optional public site origin returned in GET /validate meta_data.
+   */
+  siteUrl?: string;
 }
 
 /**
  * Resolved internal configuration with guaranteed default values.
  */
-export interface ResolvedContlifyConfig extends Required<Omit<ContlifyConfig, "adapter" | "getPostUrl" | "buildPostUrl" | "logger">> {
+export interface ResolvedContlifyConfig
+  extends Required<Omit<ContlifyConfig, "adapter" | "getPostUrl" | "buildPostUrl" | "logger" | "siteName" | "siteUrl">> {
   adapter?: ContlifyAdapter;
   logger: LoggerContract;
   getPostUrl?: UrlBuilderFunction;
   buildPostUrl?: UrlBuilderFunction;
+  siteName?: string;
+  siteUrl?: string;
 }

@@ -48,7 +48,6 @@ export type {
   AuthorPayload,
   CategoryPayload,
   TagPayload,
-  ValidateResult,
   HttpMethod,
   HttpHeaders,
   QueryParameters,
@@ -57,8 +56,6 @@ export type {
 // Error System Architecture
 export {
   ContlifyError,
-  AuthenticationError,
-  ValidationError,
   NotFoundError,
   AdapterError,
   ErrorCode,

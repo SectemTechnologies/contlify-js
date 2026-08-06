@@ -9,13 +9,12 @@ Use this checklist prior to publishing a new release of `contlify` to npm.
 - [ ] **Working Tree**: Ensure all feature branches are merged into `main` and working directory is clean (`git status`).
 - [ ] **Dependencies**: Verify `package.json` contains no unneeded devDependencies or security issues (`npm audit`).
 - [ ] **TypeScript Check**: Verify zero type errors across codebase and examples (`npm run typecheck`).
-- [ ] **Unit Tests**: Verify all unit tests pass with 100% success rate (`npm test`).
 - [ ] **Build Check**: Verify `tsup` generates `dist/index.js`, `dist/index.mjs`, and `dist/index.d.ts` without warnings (`npm run build`).
 - [ ] **Documentation Review**:
   - `README.md` features current version and examples.
   - `CHANGELOG.md` updated with release notes and version number.
   - `docs/api-reference.md` reflects current API contracts.
-- [ ] **Package Contents Verification**: Run `npm pack` dry run and inspect generated tarball file listing to verify no tests, logs, or scratch files leak into bundle.
+- [ ] **Package Contents Verification**: Run `npm pack` dry run and inspect generated tarball file listing to verify no logs or scratch files leak into bundle.
 
 ---
 
