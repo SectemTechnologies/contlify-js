@@ -96,4 +96,5 @@ export type { ValidatorContract, ValidationResult } from "./validation/validator
 
 // Utilities
 export { slugify } from "./utils/slugify.js";
+export { optimizeContentImages, type ImageTransformOptions } from "./utils/image-transformer.js";
 export { HttpStatus, type HttpStatusCode } from "./utils/http-status.js";

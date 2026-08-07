@@ -3,6 +3,7 @@ import { UpdatePayloadValidator } from "../validation/update-payload-validator.j
 import { RouteParamValidator } from "../validation/route-param-validator.js";
 import { ResponseBuilder } from "../responses/response-builder.js";
 import { slugify } from "../utils/slugify.js";
+import { optimizeContentImages } from "../utils/image-transformer.js";
 import { HttpStatus } from "../utils/http-status.js";
 import { ErrorCode } from "../errors/error-codes.js";
 import { AdapterError } from "../errors/adapter-error.js";
@@ -11,7 +12,7 @@ const updateValidator = new UpdatePayloadValidator();
 
 /**
  * Route handler for PATCH /posts/:id and PUT /posts/:id endpoints.
- * Handles post update pipeline.
+ * Handles post update pipeline with responsive image optimization.
  */
 export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
   // 1. Validate route parameter (:id)
@@ -37,6 +38,9 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
 
   const payload = validationResult.data;
 
+  // Optimize content images if updated content string was provided
+  const content = typeof payload.content === "string" ? optimizeContentImages(payload.content) : undefined;
+
   // 3. Re-calculate slug and URL if title or custom_slug were provided
   let slug: string | undefined = undefined;
   const rawSlug = payload.custom_slug ?? payload.slug;
@@ -48,7 +52,7 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
 
   let postUrl: string | undefined = undefined;
   if (slug) {
-    const postForUrl = { ...payload, slug };
+    const postForUrl = { ...payload, ...(content ? { content } : {}), slug };
     const resolver = ctx.config.getPostUrl ?? ctx.config.buildPostUrl;
     if (resolver) {
       try {
@@ -64,6 +68,7 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
 
   const enrichedPayload = {
     ...payload,
+    ...(content ? { content } : {}),
     ...(slug ? { slug, custom_slug: slug } : {}),
     ...(postUrl ? { post_url: postUrl } : {}),
   };
