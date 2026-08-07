@@ -15,7 +15,7 @@ export interface LoggerContract {
  * Function contract for dynamic post URL generation.
  * Accepts either post entity or slug.
  */
-export type UrlBuilderFunction = (post: Post | { slug: string; [key: string]: unknown }) => string;
+export type UrlBuilderFunction = (post: Post | { slug: string;[key: string]: unknown }) => string;
 
 /**
  * Feature flag options for experimental features or enabling optional routes.
