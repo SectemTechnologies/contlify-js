@@ -101,3 +101,29 @@ export type { ValidatorContract, ValidationResult } from "./validation/validator
 export { slugify } from "./utils/slugify.js";
 export { optimizeContentImages, type ImageTransformOptions } from "./utils/image-transformer.js";
 export { HttpStatus, type HttpStatusCode } from "./utils/http-status.js";
+
+// Read-Side Query Contract
+export type {
+  ContlifyQueryContract,
+  PostQueryOptions,
+  PaginatedPostsResult,
+} from "./queries/index.js";
+
+// Template System (Blog Page Scaffolding)
+export {
+  getBlogListingTemplate,
+  getBlogPostTemplate,
+  getQueriesTemplate,
+  getAdapterConfigTemplate,
+  getApiRouteTemplate,
+  getScaffoldManifest,
+  type ScaffoldFileEntry,
+} from "./templates/index.js";
+
+// CLI & Scaffolder
+export {
+  scaffoldProject,
+  formatScaffoldResults,
+  type ScaffoldFileResult,
+  type ScaffoldOptions,
+} from "./cli/index.js";
