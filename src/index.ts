@@ -127,3 +127,33 @@ export {
   type ScaffoldFileResult,
   type ScaffoldOptions,
 } from "./cli/index.js";
+
+// Pre-Built Database Adapters (Phase 2)
+export {
+  createPostgresAdapter,
+  createSupabaseAdapter,
+  createD1Adapter,
+  createMongoAdapter,
+  mapRowToPost,
+  mapRowToAuthor,
+  mapRowToCategory,
+  mapRowToTag,
+  type PostgresClientLike,
+  type SupabaseClientLike,
+  type D1DatabaseLike,
+  type D1StmtLike,
+  type MongoDbLike,
+  type MongoCollectionLike,
+  type RawPostRow,
+  type RawAuthorRow,
+  type RawCategoryRow,
+  type RawTagRow,
+} from "./built-in-adapters/index.js";
+
+// Database Migration Schemas (Phase 2)
+export {
+  postgresSchema,
+  d1Schema,
+  getMigrationSql,
+  type SupportedDatabaseType,
+} from "./migrations/index.js";

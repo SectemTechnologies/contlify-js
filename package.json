@@ -15,11 +15,15 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "contlify": "./dist/bin/contlify.mjs"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "cli": "node dist/bin/contlify.mjs"
   },
   "repository": {
     "type": "git",
