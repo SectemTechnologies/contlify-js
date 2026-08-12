@@ -33,12 +33,27 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     notFound();
   }
 
+  const primaryCategory = post.categories && post.categories.length > 0 ? post.categories[0] : null;
+
   return (
     <article style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "sans-serif" }}>
       <header style={{ marginBottom: "2rem" }}>
-        <Link href="/blog" style={{ color: "#0070f3", textDecoration: "none", display: "inline-block", marginBottom: "1rem" }}>
-          &larr; Back to Blog
-        </Link>
+        {primaryCategory ? (
+          <Link
+            href={\`/blog/category/\${primaryCategory.slug}\`}
+            style={{ color: "#0070f3", textDecoration: "none", display: "inline-block", marginBottom: "1rem", fontSize: "0.875rem" }}
+          >
+            &larr; Back to {primaryCategory.name}
+          </Link>
+        ) : (
+          <Link
+            href="/blog"
+            style={{ color: "#0070f3", textDecoration: "none", display: "inline-block", marginBottom: "1rem", fontSize: "0.875rem" }}
+          >
+            &larr; Back to Categories
+          </Link>
+        )}
+
         <h1 style={{ fontSize: "2.25rem", margin: "0 0 0.5rem 0" }}>{post.title}</h1>
         {post.subtitle && <p style={{ fontSize: "1.15rem", color: "#666", margin: "0 0 1rem 0" }}>{post.subtitle}</p>}
         <div style={{ fontSize: "0.875rem", color: "#888" }}>

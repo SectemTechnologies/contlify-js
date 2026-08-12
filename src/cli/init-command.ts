@@ -252,8 +252,9 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log(`     ${dim("app/api/contlify/[...path]/route.ts")} — API route handler`);
   log(`     ${dim("lib/contlify/adapter.ts")}             — Database adapter (${dbType}${dbType === "postgres" ? ` - ${pgTarget}` : ""})`);
   log(`     ${dim("lib/contlify/queries.ts")}             — Blog read queries`);
-  log(`     ${dim("app/blog/page.tsx")}                   — Blog listing page`);
-  log(`     ${dim("app/blog/[slug]/page.tsx")}            — Single post page`);
+  log(`     ${dim("app/blog/page.tsx")}                   — Blog categories page`);
+  log(`     ${dim("app/blog/category/[slug]/page.tsx")}   — Category posts page`);
+  log(`     ${dim("app/blog/post/[slug]/page.tsx")}       — Single post page`);
   log("");
 
   const shouldProceed = await confirm("  Proceed with setup?", true);

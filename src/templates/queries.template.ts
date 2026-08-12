@@ -6,12 +6,10 @@
  * Users can customize or replace this file entirely.
  */
 export function getQueriesTemplate(): string {
-  return `import type { Post } from "contlify";
+  return `import type { Post, Category } from "contlify";
 import { contlifyAdapter } from "./adapter";
 
 /**
-<<<<<<< Updated upstream
-=======
  * Fetch all categories from the database.
  */
 export async function getCategories(): Promise<Category[]> {
@@ -40,7 +38,6 @@ export async function getPostsByCategory(categorySlug: string): Promise<Post[]> 
 }
 
 /**
->>>>>>> Stashed changes
  * Fetch all published blog posts, sorted by most recent first.
  */
 export async function getAllPosts(): Promise<Post[]> {
