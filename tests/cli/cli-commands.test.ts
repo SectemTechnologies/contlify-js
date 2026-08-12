@@ -38,10 +38,11 @@ describe("CLI Commands (Phase 3)", () => {
 
       await runInit(tempDir);
 
-      // All 6 scaffold files should exist
+      // All 7 scaffold files should exist
       expect(fs.existsSync(path.join(tempDir, "app/blog/page.tsx"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "app/blog/category/[slug]/page.tsx"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "app/blog/post/[slug]/page.tsx"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "app/blog/loading.tsx"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "lib/contlify/queries.ts"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "lib/contlify/adapter.ts"))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, "app/api/contlify/[...path]/route.ts"))).toBe(true);

@@ -435,8 +435,22 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const db = await getDb();
       if (!db) return [];
 
-      const rows = await all<RawCategoryRow>(db.prepare("SELECT * FROM contlify_categories ORDER BY name ASC"));
-      return rows.map(mapRowToCategory);
+      const rows = await all<RawCategoryRow & { cover_image?: string }>(
+        db.prepare(
+          `SELECT c.*,
+             (SELECT p.cover_image
+              FROM contlify_posts p
+              INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
+              WHERE pc.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
+              ORDER BY p.published_at DESC LIMIT 1) AS cover_image
+           FROM contlify_categories c
+           ORDER BY c.name ASC`
+        )
+      );
+      return rows.map((row) => ({
+        ...mapRowToCategory(row),
+        coverImage: row.cover_image ? row.cover_image : undefined,
+      }));
     },
 
     async getTags(): Promise<Tag[]> {

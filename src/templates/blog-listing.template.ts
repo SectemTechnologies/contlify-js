@@ -12,39 +12,70 @@ export default async function BlogPage() {
   const categories = await getCategories();
 
   return (
-    <main style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem" }}>Blog Categories</h1>
-      <p style={{ color: "#666", marginBottom: "2rem" }}>Select a category to explore articles.</p>
+    <main style={{ maxWidth: "900px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <h1 style={{ fontSize: "2.25rem", fontWeight: "700", margin: "0 0 0.5rem 0", color: "#111827" }}>Blog Categories</h1>
+      <p style={{ color: "#4b5563", margin: "0 0 2rem 0", fontSize: "1rem" }}>Explore topics and latest articles.</p>
 
       {categories.length === 0 ? (
-        <p style={{ color: "#666" }}>No categories found.</p>
+        <div style={{ padding: "3rem", textAlign: "center", backgroundColor: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
+          <p style={{ color: "#6b7280", margin: 0 }}>No categories found yet.</p>
+        </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1.25rem" }}>
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              href={\`/blog/category/\${category.slug}\`}
-              style={{
-                display: "block",
-                padding: "1.5rem",
-                border: "1px solid #e5e7eb",
-                borderRadius: "8px",
-                textDecoration: "none",
-                color: "inherit",
-                backgroundColor: "#fff",
-                transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-              }}
-            >
-              <h2 style={{ fontSize: "1.25rem", margin: "0 0 0.5rem 0", color: "#0070f3" }}>
-                {category.name} &rarr;
-              </h2>
-              {category.description && (
-                <p style={{ fontSize: "0.875rem", color: "#666", margin: 0 }}>
-                  {category.description}
-                </p>
-              )}
-            </Link>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1.5rem" }}>
+          {categories.map((category) => {
+            const imageUrl = typeof category.coverImage === "string" ? category.coverImage : category.coverImage?.url;
+            return (
+              <Link
+                key={category.id}
+                href={\`/blog/category/\${category.slug}\`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "10px",
+                  textDecoration: "none",
+                  color: "inherit",
+                  backgroundColor: "#ffffff",
+                  overflow: "hidden",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                }}
+              >
+                {imageUrl && (
+                  <div style={{ width: "100%", height: "140px", overflow: "hidden", backgroundColor: "#f3f4f6" }}>
+                    <img
+                      src={imageUrl}
+                      alt={category.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  </div>
+                )}
+                <div style={{ padding: "1.25rem", flex: 1, display: "flex", flexDirection: "column" }}>
+                  <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: "0 0 0.5rem 0", color: "#111827" }}>
+                    {category.name}
+                  </h2>
+                  {category.description && (
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280", margin: "0 0 1.25rem 0", lineHeight: "1.5", flex: 1 }}>
+                      {category.description}
+                    </p>
+                  )}
+                  <div style={{ marginTop: "auto" }}>
+                    <span style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "0.4rem 0.85rem",
+                      fontSize: "0.875rem",
+                      fontWeight: "500",
+                      color: "#2563eb",
+                      backgroundColor: "#eff6ff",
+                      borderRadius: "6px",
+                    }}>
+                      Explore Category &rarr;
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </main>
