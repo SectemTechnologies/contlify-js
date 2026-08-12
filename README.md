@@ -6,24 +6,51 @@
 [![license](https://img.shields.io/npm/l/contlify.svg?style=flat-square)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
 
-`contlify` is a lightweight, framework-agnostic, database-agnostic TypeScript middleware and adapter engine. It enables any publisher service (Contlify, Postman, n8n, custom backends, headless CMS) to publish, update, and manage blog posts on your Next.js site through standardized Web API endpoints.
+`contlify` is a database-agnostic TypeScript publishing middleware and adapter engine. It enables any publisher service (Postman, n8n, CMS dashboards, or custom backends) to publish, update, and manage blog posts on your Next.js site through standardized Web APIs.
 
 ---
 
-## Key Features
+## 🌟 Key Features
 
-- **Database-Agnostic Storage Adapters**: Connect your own database (Prisma, Drizzle, Mongoose, Supabase, Raw SQL, or custom APIs).
-- **Modern Next.js App Router Support**: Plug directly into Next.js Catch-All Route Handlers (`app/api/contlify/[...path]/route.ts`).
-- **Centralized Authentication**: Enforces secure `X-Truecmo-Key` (or `CONTLIFY_API_KEY`) API key authentication.
-- **Runtime Payload Validation**: Built-in validation verifying required fields (`title`, `content`, `status`) and optional metadata.
-- **Automatic Slugification**: Generates clean URL-safe slugs using `slugify` with support for custom slugs.
-- **Dynamic Post URL Resolver**: Configurable `getPostUrl(post)` callback for customized blog routing structures.
-- **Unified JSON Error System**: Standardized error payloads hiding internal server details.
-- **Strictly Typed**: Written in 100% TypeScript with complete declaration files (`.d.ts`) and sourcemaps.
+- **Built-in Storage Adapters**: Pre-built adapters for **PostgreSQL** (`pg` & `@neondatabase/serverless`), **Supabase**, **Cloudflare D1**, and **MongoDB**.
+- **Interactive CLI Wizard (`npx contlify init`)**: Automatically detects whether your Next.js app uses `src/` (`src/app`, `src/lib`) or root level layout and scaffolds ready-to-use blog pages.
+- **Flexible Payload Normalization**: Accepts simple string inputs (`"author": "Rauf"`, `"categories": ["Technology", "Design"]`) OR full object arrays (`[{ name: "Technology", slug: "technology" }]`).
+- **Dynamic Category Cover Images**: Categories automatically inherit the cover image of the latest published post in that category without requiring database migrations.
+- **Category-First Next.js App Router Pages**: Generates `/blog` (Categories grid), `/blog/category/[slug]` (Filtered articles), and `/blog/post/[slug]` (Article detail).
+- **Instant Loading Feedback (`app/blog/loading.tsx`)**: Scaffolds a Next.js `loading.tsx` component so navigation between pages shows a clean animated loading spinner.
+- **Edge & Cloudflare Workers Compatibility**: 100% compatible with Cloudflare Workers, OpenNext, Vercel, and Node.js. Includes built-in `esbuild` edge polyfills.
 
 ---
 
-## Installation
+## 🚀 CLI Commands
+
+### 1. Interactive Project Setup (`init`)
+Scaffolds ready-to-use blog pages, queries, and database adapter configuration in your Next.js project:
+
+```bash
+npx contlify init
+```
+
+* **Smart `src/` Layout Detection**:
+  - If your project has `src/app/`, files are scaffolded into `src/app/` and `src/lib/`.
+  - If not, files are scaffolded into root `app/` and `lib/`.
+  - Reuses existing project folders without overwriting user files.
+
+* **Overwrite Flag**:
+  ```bash
+  npx contlify init --overwrite
+  ```
+
+### 2. Migration SQL Generator (`migrate`)
+Generates database migration SQL files (`contlify-postgres.sql`, `contlify-d1.sql`, `contlify-supabase.sql`):
+
+```bash
+npx contlify migrate
+```
+
+---
+
+## 📦 Installation
 
 ```bash
 npm install contlify
@@ -35,92 +62,66 @@ yarn add contlify
 
 ---
 
-## Requirements
+## ⚡ Quick Start & Built-in Adapters
 
-- **Node.js**: `>= 18.0.0`
-- **Next.js**: `>= 13.4.0` (App Router) or Pages Router
-- **TypeScript**: `>= 5.0.0` (Optional, recommended)
-
----
-
-## Quick Start (Next.js App Router)
-
-### 1. Configure Environment Variable (`.env`)
-
+### 1. Environment Variable (`.env.local`)
 ```env
 CONTLIFY_API_KEY=your_secret_contlify_api_key
 ```
 
-### 2. Implement Database Adapter (`lib/contlify-adapter.ts`)
+### 2. Choose Your Database Adapter (`lib/contlify/adapter.ts`)
 
+#### A. PostgreSQL (Node.js or Neon Serverless)
 ```typescript
-import type { ContlifyAdapter, PublishPostPayload, PublishResponse } from "contlify";
-import { prisma } from "./db"; // Your Prisma client
+import { Pool } from "@neondatabase/serverless"; // Or 'pg' for Node.js
+import { createPostgresAdapter } from "contlify";
 
-export const myAdapter: ContlifyAdapter = {
-  async ping() {
-    return true;
-  },
-
-  async createPost(payload) {
-    const slug = (payload.custom_slug ?? payload.slug ?? "post").trim();
-
-    const post = await prisma.post.upsert({
-      where: { slug },
-      create: {
-        title: payload.title,
-        slug,
-        content: payload.content,
-        status: payload.status,
-      },
-      update: {
-        title: payload.title,
-        content: payload.content,
-        status: payload.status,
-      },
-    });
-
-    return {
-      postId: post.id,
-      slug: post.slug,
-      status: post.status as "published",
-      action: "created",
-      url: `/blog/${post.slug}`,
-    };
-  },
-
-  async updatePost(id, payload) {
-    const post = await prisma.post.update({
-      where: { id },
-      data: {
-        title: payload.title,
-        content: payload.content,
-        status: payload.status,
-      },
-    });
-
-    return {
-      postId: post.id,
-      slug: post.slug,
-      status: post.status as "published",
-      action: "updated",
-      url: `/blog/${post.slug}`,
-    };
-  },
-};
+const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+export const contlifyAdapter = createPostgresAdapter(pool);
 ```
 
-### 3. Create Catch-All Route Handler (`app/api/contlify/[...path]/route.ts`)
+#### B. Supabase
+```typescript
+import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdapter } from "contlify";
+
+const client = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+export const contlifyAdapter = createSupabaseAdapter(client);
+```
+
+#### C. Cloudflare D1
+```typescript
+import { createD1Adapter } from "contlify";
+
+export function getAdapter(env: { DB: D1Database }) {
+  return createD1Adapter(env.DB);
+}
+```
+
+#### D. MongoDB
+```typescript
+import { MongoClient } from "mongodb";
+import { createMongoAdapter } from "contlify";
+
+const client = new MongoClient(process.env.MONGODB_URI!);
+export const contlifyAdapter = createMongoAdapter(() => client.db());
+```
+
+---
+
+### 3. Catch-All Route Handler (`app/api/contlify/[...path]/route.ts`)
 
 ```typescript
 import { createContlifyHandler } from "contlify";
-import { myAdapter } from "@/lib/contlify-adapter";
+import { contlifyAdapter } from "@/lib/contlify/adapter";
+
+export const dynamic = "force-dynamic";
 
 const handler = createContlifyHandler({
   apiKey: process.env.CONTLIFY_API_KEY,
-  adapter: myAdapter,
+  adapter: contlifyAdapter,
   apiPathPrefix: "/api/contlify",
-  getPostUrl: (post) => `/blog/${post.slug}`,
+  getPostUrl: (post) => `/blog/post/${post.slug}`,
 });
 
 export {
@@ -136,78 +137,96 @@ export {
 
 ---
 
-## Configuration Options
+## 📮 API Publishing Payload Examples
 
-```typescript
-export interface ContlifyConfig {
-  /**
-   * Secret API key used for authenticating incoming publishing requests.
-   * Defaults to process.env.CONTLIFY_API_KEY if omitted.
-   */
-  apiKey?: string;
+### Simple Payload (String Categories & Author)
+```json
+POST /api/contlify/posts
+Headers:
+  x-api-key: your_secret_contlify_api_key
+  Content-Type: application/json
 
-  /**
-   * Storage engine adapter implementing ContlifyAdapter interface.
-   */
-  adapter?: ContlifyAdapter;
+{
+  "title": "Getting Started with Contlify",
+  "content": "<h1>Hello World</h1><p>This is my first published article.</p>",
+  "status": "published",
+  "custom_slug": "getting-started-with-contlify",
+  "author": "Alex Smith",
+  "categories": [
+    "Technology",
+    "Web Development"
+  ],
+  "tags": [
+    "Next.js",
+    "TypeScript"
+  ],
+  "coverImage": "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8"
+}
+```
 
-  /**
-   * Custom URL resolver function constructing public post link.
-   */
-  getPostUrl?: (post: { slug: string; [key: string]: unknown }) => string;
-
-  /**
-   * Base route path prefix.
-   * @default "/api/contlify"
-   */
-  apiPathPrefix?: string;
-
-  /**
-   * Custom logger instance (pino, winston, or custom).
-   */
-  logger?: LoggerContract;
+### Advanced Payload (Object Entities & Metadata)
+```json
+{
+  "title": "Mastering Next.js App Router",
+  "content": "<h2>Deep Dive</h2><p>Server Actions and Edge Rendering.</p>",
+  "status": "published",
+  "author": {
+    "name": "Sarah Chen",
+    "email": "sarah@example.com",
+    "bio": "Lead Full-Stack Architect"
+  },
+  "categories": [
+    {
+      "name": "Technology",
+      "slug": "technology",
+      "description": "Tech news, frameworks, and engineering tutorials."
+    }
+  ],
+  "tags": [
+    { "name": "React", "slug": "react" }
+  ],
+  "seo": {
+    "title": "Next.js App Router Masterclass",
+    "description": "Complete guide to Next.js App Router architecture."
+  }
 }
 ```
 
 ---
 
-## Supported Endpoints
+## 🛠️ Endpoints Reference
 
 | Method | Endpoint Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/contlify/validate` | Health check & connectivity validation |
-| `POST` | `/api/contlify/posts` | Create & publish a new blog post |
-| `PATCH` | `/api/contlify/posts/:id` | Partial update of an existing post |
-| `PUT` | `/api/contlify/posts/:id` | Full update or replacement of a post |
-| `GET` | `/api/contlify/authors` | Retrieve list of post authors |
-| `GET` | `/api/contlify/categories` | Retrieve list of categories |
-| `GET` | `/api/contlify/tags` | Retrieve list of post tags |
+| `GET` | `/api/contlify/validate` | Health check, API key verification, & adapter capabilities |
+| `POST` | `/api/contlify/posts` | Create and publish a new blog post |
+| `PATCH` | `/api/contlify/posts/:id` | Partial update of an existing blog post by ID or slug |
+| `PUT` | `/api/contlify/posts/:id` | Full update or replacement of a post by ID or slug |
+| `GET` | `/api/contlify/authors` | Retrieve list of authors |
+| `GET` | `/api/contlify/categories` | Retrieve list of categories (with cover images) |
+| `GET` | `/api/contlify/tags` | Retrieve list of tags |
 
 ---
 
-## Documentation & Examples
+## 📑 Generated Navigation Routes
+
+| Page | File Path | Route | Description |
+| :--- | :--- | :--- | :--- |
+| **Categories Grid** | `app/blog/page.tsx` | `/blog` | Grid of all category cards with cover banners |
+| **Category Articles** | `app/blog/category/[slug]/page.tsx` | `/blog/category/[slug]` | Articles filtered by category |
+| **Single Article** | `app/blog/post/[slug]/page.tsx` | `/blog/post/[slug]` | Full article content view |
+| **Loading Spinner** | `app/blog/loading.tsx` | Fallback | Instant animated spinner during page navigation |
+
+---
+
+## 📖 Documentation & Guides
 
 - 📖 [API Reference Guide](./docs/api-reference.md)
-- 🔌 [Integration Guides (Contlify, Postman, cURL, n8n, Custom Backend)](./docs/integration-guides.md)
+- 🔌 [Integration Guides (Postman, cURL, n8n, Custom Backend)](./docs/integration-guides.md)
 - ⚠️ [Error Catalog & Troubleshooting](./docs/errors.md)
-- 💡 [Reference Adapters (Prisma, Drizzle, Mongoose, In-Memory)](./examples/adapters/)
-- 🚀 [Executable Next.js App Router Example App](./examples/nextjs-blog/)
 
 ---
 
-## Contributing Guidelines
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Ensure all tests pass (`npm test`) and typecheck passes (`npm run typecheck`).
-4. Commit your changes (`git commit -m 'feat: add amazing feature'`).
-5. Push to the branch (`git push origin feature/amazing-feature`).
-6. Open a Pull Request.
-
----
-
-## License
+## 📜 License
 
 [MIT](./LICENSE)
