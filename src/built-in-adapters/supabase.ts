@@ -260,7 +260,27 @@ export function createSupabaseAdapter(client: SupabaseClientLike): ContlifyAdapt
 
     async getCategories(): Promise<Category[]> {
       const rows = await queryAll<RawCategoryRow>(client.from("contlify_categories").select("*").order("name", { ascending: true }));
-      return rows.map(mapRowToCategory);
+      const baseCategories = rows.map(mapRowToCategory);
+
+      return Promise.all(
+        baseCategories.map(async (cat) => {
+          if (cat.coverImage) return cat;
+          try {
+            const joinRows = await queryAll<{ post_id: string }>(
+              client.from("contlify_post_categories").select("post_id").eq("category_id", cat.id)
+            );
+            const postIds = joinRows.map((r) => r.post_id);
+            if (!postIds.length) return cat;
+            const postRows = await queryAll<{ cover_image?: string }>(
+              client.from("contlify_posts").select("cover_image").in("id", postIds).order("published_at", { ascending: false })
+            );
+            const validRow = postRows.find((r) => r.cover_image && r.cover_image.trim() !== "");
+            return { ...cat, coverImage: validRow?.cover_image };
+          } catch {
+            return cat;
+          }
+        })
+      );
     },
 
     async getTags(): Promise<Tag[]> {

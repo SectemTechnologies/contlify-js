@@ -299,8 +299,20 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
     },
 
     async getCategories(): Promise<Category[]> {
-      const res = await client.query<RawCategoryRow>("SELECT * FROM contlify_categories ORDER BY name ASC");
-      return res.rows.map(mapRowToCategory);
+      const res = await client.query<RawCategoryRow & { cover_image?: string }>(
+        `SELECT c.*,
+           (SELECT p.cover_image
+            FROM contlify_posts p
+            INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
+            WHERE pc.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
+            ORDER BY p.published_at DESC LIMIT 1) AS cover_image
+         FROM contlify_categories c
+         ORDER BY c.name ASC`
+      );
+      return res.rows.map((row) => ({
+        ...mapRowToCategory(row),
+        coverImage: row.cover_image ? row.cover_image : undefined,
+      }));
     },
 
     async getTags(): Promise<Tag[]> {

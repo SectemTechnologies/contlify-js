@@ -1,6 +1,7 @@
 import { getBlogListingTemplate } from "./blog-listing.template.js";
 import { getCategoryPostsTemplate } from "./category-posts.template.js";
 import { getBlogPostTemplate } from "./blog-post.template.js";
+import { getBlogLoadingTemplate } from "./blog-loading.template.js";
 import { getQueriesTemplate } from "./queries.template.js";
 import { getAdapterConfigTemplate } from "./adapter-config.template.js";
 import { getApiRouteTemplate } from "./api-route.template.js";
@@ -8,6 +9,7 @@ import { getApiRouteTemplate } from "./api-route.template.js";
 export { getBlogListingTemplate } from "./blog-listing.template.js";
 export { getCategoryPostsTemplate } from "./category-posts.template.js";
 export { getBlogPostTemplate } from "./blog-post.template.js";
+export { getBlogLoadingTemplate } from "./blog-loading.template.js";
 export { getQueriesTemplate } from "./queries.template.js";
 export { getAdapterConfigTemplate } from "./adapter-config.template.js";
 export { getApiRouteTemplate } from "./api-route.template.js";
@@ -44,6 +46,11 @@ export function getScaffoldManifest(): ScaffoldFileEntry[] {
       relativePath: "lib/contlify/queries.ts",
       getContent: getQueriesTemplate,
       description: "Blog query functions (read-side)",
+    },
+    {
+      relativePath: "app/blog/loading.tsx",
+      getContent: getBlogLoadingTemplate,
+      description: "Blog page loading state component",
     },
     {
       relativePath: "app/blog/page.tsx",

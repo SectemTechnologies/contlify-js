@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { scaffoldProject, formatScaffoldResults } from "./scaffolder.js";
+import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "./scaffolder.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
 
@@ -246,15 +246,19 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     ]);
   }
 
+  const baseDir = detectBaseDir(projectRoot);
+  const prefix = (rel: string) => baseDir ? `${baseDir}/${rel}` : rel;
+
   // Step 2: Confirm scaffold
   log("");
   info(`  ℹ️  The following files will be generated in your project:`);
-  log(`     ${dim("app/api/contlify/[...path]/route.ts")} — API route handler`);
-  log(`     ${dim("lib/contlify/adapter.ts")}             — Database adapter (${dbType}${dbType === "postgres" ? ` - ${pgTarget}` : ""})`);
-  log(`     ${dim("lib/contlify/queries.ts")}             — Blog read queries`);
-  log(`     ${dim("app/blog/page.tsx")}                   — Blog categories page`);
-  log(`     ${dim("app/blog/category/[slug]/page.tsx")}   — Category posts page`);
-  log(`     ${dim("app/blog/post/[slug]/page.tsx")}       — Single post page`);
+  log(`     ${dim(prefix("app/api/contlify/[...path]/route.ts"))} — API route handler`);
+  log(`     ${dim(prefix("lib/contlify/adapter.ts"))}             — Database adapter (${dbType}${dbType === "postgres" ? ` - ${pgTarget}` : ""})`);
+  log(`     ${dim(prefix("lib/contlify/queries.ts"))}             — Blog read queries`);
+  log(`     ${dim(prefix("app/blog/loading.tsx"))}               — Loading spinner component`);
+  log(`     ${dim(prefix("app/blog/page.tsx"))}                   — Blog categories page`);
+  log(`     ${dim(prefix("app/blog/category/[slug]/page.tsx"))}   — Category posts page`);
+  log(`     ${dim(prefix("app/blog/post/[slug]/page.tsx"))}       — Single post page`);
   log("");
 
   const shouldProceed = await confirm("  Proceed with setup?", true);
@@ -283,7 +287,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   const results = scaffoldProject({ projectRoot, overwrite: flags.overwrite ?? false });
 
   // Override adapter.ts with the DB-specific content
-  const adapterPath = path.join(projectRoot, "lib/contlify/adapter.ts");
+  const adapterPath = path.join(projectRoot, prefix("lib/contlify/adapter.ts"));
   const adapterContent = buildAdapterContent(dbType, pgTarget);
   fs.writeFileSync(adapterPath, adapterContent, "utf-8");
 

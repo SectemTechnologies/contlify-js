@@ -54,6 +54,7 @@ export interface Category {
   slug: string;
   name: string;
   description?: string;
+  coverImage?: MediaAsset | string;
   parentId?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;

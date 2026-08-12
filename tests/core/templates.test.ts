@@ -172,9 +172,9 @@ describe("Template System", () => {
   });
 
   describe("Scaffold Manifest", () => {
-    it("should return 6 file entries", () => {
+    it("should return 7 file entries", () => {
       const manifest = getScaffoldManifest();
-      expect(manifest).toHaveLength(6);
+      expect(manifest).toHaveLength(7);
     });
 
     it("should include all expected file paths", () => {

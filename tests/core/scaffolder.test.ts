@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { scaffoldProject, formatScaffoldResults } from "../../src/cli/scaffolder.js";
+import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "../../src/cli/scaffolder.js";
 
 describe("Scaffolder", () => {
   let tempDir: string;
@@ -17,11 +17,11 @@ describe("Scaffolder", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should create all 6 scaffold files in the target directory", () => {
+  it("should create all 7 scaffold files in the target directory", () => {
     const results = scaffoldProject({ projectRoot: tempDir });
 
     const created = results.filter((r) => r.status === "created");
-    expect(created).toHaveLength(6);
+    expect(created).toHaveLength(7);
 
     // Verify files actually exist on disk
     for (const result of created) {
@@ -134,13 +134,35 @@ describe("Scaffolder", () => {
     expect(fs.existsSync(path.join(tempDir, "lib/contlify/adapter.ts"))).toBe(false);
   });
 
+  describe("detectBaseDir & src/ layout support", () => {
+    it("should detect src directory when src/app exists", () => {
+      fs.mkdirSync(path.join(tempDir, "src/app"), { recursive: true });
+      expect(detectBaseDir(tempDir)).toBe("src");
+    });
+
+    it("should return empty string when src directory does not exist", () => {
+      expect(detectBaseDir(tempDir)).toBe("");
+    });
+
+    it("should scaffold into src/app and src/lib when src/ exists", () => {
+      fs.mkdirSync(path.join(tempDir, "src/app"), { recursive: true });
+
+      const results = scaffoldProject({ projectRoot: tempDir });
+
+      expect(results.every((r) => r.status === "created")).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "src/app/blog/page.tsx"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "src/lib/contlify/adapter.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "src/app/api/contlify/[...path]/route.ts"))).toBe(true);
+    });
+  });
+
   describe("formatScaffoldResults", () => {
     it("should produce human-readable output", () => {
       const results = scaffoldProject({ projectRoot: tempDir });
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("✅ Created");
-      expect(output).toContain("6 created");
+      expect(output).toContain("7 created");
       expect(output).toContain("0 skipped");
       expect(output).toContain("0 errors");
     });
@@ -151,7 +173,7 @@ describe("Scaffolder", () => {
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("Skipped");
-      expect(output).toContain("6 skipped");
+      expect(output).toContain("7 skipped");
     });
   });
 });

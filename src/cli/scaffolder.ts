@@ -25,6 +25,16 @@ export interface ScaffoldOptions {
 }
 
 /**
+ * Detects whether the user's project uses a `src/` directory layout.
+ * Returns `"src"` if `src/app` or `src/` exists, or `""` if not.
+ */
+export function detectBaseDir(projectRoot: string): string {
+  const hasSrcApp = fs.existsSync(path.join(projectRoot, "src", "app"));
+  const hasSrcDir = fs.existsSync(path.join(projectRoot, "src"));
+  return hasSrcApp || hasSrcDir ? "src" : "";
+}
+
+/**
  * Scaffolds contlify template files into the user's project directory.
  *
  * Creates directories as needed. Skips existing files unless `overwrite` is true.
@@ -36,6 +46,7 @@ export interface ScaffoldOptions {
 export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] {
   const { projectRoot, overwrite = false, only } = options;
   const manifest = getScaffoldManifest();
+  const baseDir = detectBaseDir(projectRoot);
 
   const filesToScaffold: ScaffoldFileEntry[] = only
     ? manifest.filter((entry) => only.includes(entry.relativePath))
@@ -44,14 +55,15 @@ export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] 
   const results: ScaffoldFileResult[] = [];
 
   for (const entry of filesToScaffold) {
-    const absolutePath = path.join(projectRoot, entry.relativePath);
+    const targetRelativePath = baseDir ? `${baseDir}/${entry.relativePath}` : entry.relativePath;
+    const absolutePath = path.join(projectRoot, targetRelativePath);
     const dir = path.dirname(absolutePath);
 
     try {
       // Check if file already exists
       if (fs.existsSync(absolutePath) && !overwrite) {
         results.push({
-          relativePath: entry.relativePath,
+          relativePath: targetRelativePath,
           description: entry.description,
           status: "skipped",
           message: "File already exists (use --overwrite to replace)",
@@ -67,14 +79,14 @@ export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] 
       fs.writeFileSync(absolutePath, content, "utf-8");
 
       results.push({
-        relativePath: entry.relativePath,
+        relativePath: targetRelativePath,
         description: entry.description,
         status: "created",
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
       results.push({
-        relativePath: entry.relativePath,
+        relativePath: targetRelativePath,
         description: entry.description,
         status: "error",
         message: errorMessage,

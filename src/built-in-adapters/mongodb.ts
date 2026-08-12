@@ -440,7 +440,29 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         if (!categories) return [];
 
         const docs = await categories.find({}).sort({ name: 1 }).skip(0).limit(1000).toArray();
-        return docs.map(docToCategory);
+        const baseCategories = docs.map(docToCategory);
+
+        const posts = await getPostsCol();
+        if (!posts) return baseCategories;
+
+        const results = await Promise.all(
+          baseCategories.map(async (cat) => {
+            if (cat.coverImage) return cat;
+            try {
+              const latestPost = await posts
+                .find({ "categories.slug": cat.slug, coverImage: { $exists: true, $ne: null } })
+                .sort({ publishedAt: -1 })
+                .skip(0)
+                .limit(1)
+                .toArray();
+              const coverImg = latestPost[0]?.coverImage ? String(latestPost[0].coverImage) : undefined;
+              return { ...cat, coverImage: coverImg };
+            } catch {
+              return cat;
+            }
+          })
+        );
+        return results;
       } catch {
         return [];
       }
