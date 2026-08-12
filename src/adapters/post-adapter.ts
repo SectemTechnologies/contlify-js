@@ -1,5 +1,6 @@
-import type { Post } from "../types/domain.js";
+import type { Post, PostStatus } from "../types/domain.js";
 import type { PublishPostPayload, PublishResponse } from "../types/payload.js";
+import type { PostQueryOptions } from "../queries/query.interface.js";
 
 /**
  * Storage adapter contract for managing Post operations.
@@ -25,9 +26,34 @@ export interface PostAdapterContract {
   upsertPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
+   * Retrieves all posts, optionally filtered and paginated.
+   */
+  getAllPosts?(options?: PostQueryOptions): Promise<Post[]>;
+
+  /**
+   * Retrieves a single post by its unique ID.
+   */
+  getPostById?(id: string): Promise<Post | null>;
+
+  /**
    * Retrieves a post by its unique slug.
    */
   getPostBySlug?(slug: string): Promise<Post | null>;
+
+  /**
+   * Retrieves posts associated with a specific category slug.
+   */
+  getPostsByCategory?(categorySlug: string): Promise<Post[]>;
+
+  /**
+   * Retrieves posts associated with a specific tag slug.
+   */
+  getPostsByTag?(tagSlug: string): Promise<Post[]>;
+
+  /**
+   * Returns the total count of posts, optionally filtered by status.
+   */
+  getPostCount?(options?: { status?: PostStatus }): Promise<number>;
 
   /**
    * Unpublishes a post by slug or ID.

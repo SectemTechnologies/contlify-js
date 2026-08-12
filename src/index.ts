@@ -101,3 +101,59 @@ export type { ValidatorContract, ValidationResult } from "./validation/validator
 export { slugify } from "./utils/slugify.js";
 export { optimizeContentImages, type ImageTransformOptions } from "./utils/image-transformer.js";
 export { HttpStatus, type HttpStatusCode } from "./utils/http-status.js";
+
+// Read-Side Query Contract
+export type {
+  ContlifyQueryContract,
+  PostQueryOptions,
+  PaginatedPostsResult,
+} from "./queries/index.js";
+
+// Template System (Blog Page Scaffolding)
+export {
+  getBlogListingTemplate,
+  getBlogPostTemplate,
+  getQueriesTemplate,
+  getAdapterConfigTemplate,
+  getApiRouteTemplate,
+  getScaffoldManifest,
+  type ScaffoldFileEntry,
+} from "./templates/index.js";
+
+// CLI & Scaffolder
+export {
+  scaffoldProject,
+  formatScaffoldResults,
+  type ScaffoldFileResult,
+  type ScaffoldOptions,
+} from "./cli/index.js";
+
+// Pre-Built Database Adapters (Phase 2)
+export {
+  createPostgresAdapter,
+  createSupabaseAdapter,
+  createD1Adapter,
+  createMongoAdapter,
+  mapRowToPost,
+  mapRowToAuthor,
+  mapRowToCategory,
+  mapRowToTag,
+  type PostgresClientLike,
+  type SupabaseClientLike,
+  type D1DatabaseLike,
+  type D1StmtLike,
+  type MongoDbLike,
+  type MongoCollectionLike,
+  type RawPostRow,
+  type RawAuthorRow,
+  type RawCategoryRow,
+  type RawTagRow,
+} from "./built-in-adapters/index.js";
+
+// Database Migration Schemas (Phase 2)
+export {
+  postgresSchema,
+  d1Schema,
+  getMigrationSql,
+  type SupportedDatabaseType,
+} from "./migrations/index.js";

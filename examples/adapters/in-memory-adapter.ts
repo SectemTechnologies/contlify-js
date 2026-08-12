@@ -9,6 +9,7 @@ import type {
   AuthorPayload,
   CategoryPayload,
   TagPayload,
+  PostQueryOptions,
 } from "../../src/index.js";
 
 /**
@@ -147,6 +148,68 @@ export class InMemoryContlifyAdapter implements ContlifyAdapter {
       url: (payload.post_url as string) ?? `/blog/${slug}`,
       post: updatedPost,
     };
+  }
+
+  // --- Read Query Operations ---
+
+  public async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
+    // Deduplicate: postsMap stores by both ID and slug
+    const seen = new Set<string>();
+    let posts: Post[] = [];
+    for (const post of this.postsMap.values()) {
+      if (!seen.has(post.id)) {
+        seen.add(post.id);
+        posts.push(post);
+      }
+    }
+
+    // Filter by status
+    if (options?.status) {
+      posts = posts.filter((p) => p.status === options.status);
+    }
+
+    // Sort
+    const orderBy = options?.orderBy ?? "publishedAt";
+    const order = options?.order ?? "desc";
+    posts.sort((a, b) => {
+      const aVal = String(a[orderBy as keyof Post] ?? "");
+      const bVal = String(b[orderBy as keyof Post] ?? "");
+      return order === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+
+    // Pagination
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? posts.length;
+    posts = posts.slice(offset, offset + limit);
+
+    return posts;
+  }
+
+  public async getPostBySlug(slug: string): Promise<Post | null> {
+    return this.postsMap.get(slug) ?? null;
+  }
+
+  public async getPostById(id: string): Promise<Post | null> {
+    return this.postsMap.get(id) ?? null;
+  }
+
+  public async getPostsByCategory(categorySlug: string): Promise<Post[]> {
+    const allPosts = await this.getAllPosts();
+    return allPosts.filter(
+      (post) => post.categories?.some((cat) => cat.slug === categorySlug)
+    );
+  }
+
+  public async getPostsByTag(tagSlug: string): Promise<Post[]> {
+    const allPosts = await this.getAllPosts();
+    return allPosts.filter(
+      (post) => post.tags?.some((tag) => tag.slug === tagSlug)
+    );
+  }
+
+  public async getPostCount(options?: { status?: Post["status"] }): Promise<number> {
+    const posts = await this.getAllPosts(options ? { status: options.status } : undefined);
+    return posts.length;
   }
 
   // --- Authors Operations ---
