@@ -4,40 +4,48 @@
  */
 export function getBlogListingTemplate(): string {
   return `import Link from "next/link";
-import { getAllPosts } from "@/lib/contlify/queries";
+import { getCategories } from "@/lib/contlify/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function BlogPage() {
-  const posts = await getAllPosts();
+  const categories = await getCategories();
 
   return (
     <main style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: "2.25rem", marginBottom: "1.5rem" }}>Blog</h1>
+      <h1 style={{ fontSize: "2.25rem", marginBottom: "0.5rem" }}>Blog Categories</h1>
+      <p style={{ color: "#666", marginBottom: "2rem" }}>Select a category to explore articles.</p>
 
-      {posts.length === 0 ? (
-        <p style={{ color: "#666" }}>No posts published yet.</p>
+      {categories.length === 0 ? (
+        <p style={{ color: "#666" }}>No categories found.</p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0 }}>
-          {posts.map((post) => (
-            <li key={post.id} style={{ marginBottom: "2rem", borderBottom: "1px solid #eee", paddingBottom: "1.5rem" }}>
-              <article>
-                <h2 style={{ fontSize: "1.5rem", margin: "0 0 0.5rem 0" }}>
-                  <Link href={\`/blog/\${post.slug}\`} style={{ color: "#0070f3", textDecoration: "none" }}>
-                    {post.title}
-                  </Link>
-                </h2>
-                {post.excerpt && <p style={{ color: "#555", margin: "0 0 0.5rem 0" }}>{post.excerpt}</p>}
-                <div style={{ fontSize: "0.875rem", color: "#888" }}>
-                  <time>
-                    {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : ""}
-                  </time>
-                  {post.author && <span> &middot; {post.author.name}</span>}
-                </div>
-              </article>
-            </li>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1.25rem" }}>
+          {categories.map((category) => (
+            <Link
+              key={category.id}
+              href={\`/blog/category/\${category.slug}\`}
+              style={{
+                display: "block",
+                padding: "1.5rem",
+                border: "1px solid #e5e7eb",
+                borderRadius: "8px",
+                textDecoration: "none",
+                color: "inherit",
+                backgroundColor: "#fff",
+                transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+              }}
+            >
+              <h2 style={{ fontSize: "1.25rem", margin: "0 0 0.5rem 0", color: "#0070f3" }}>
+                {category.name} &rarr;
+              </h2>
+              {category.description && (
+                <p style={{ fontSize: "0.875rem", color: "#666", margin: 0 }}>
+                  {category.description}
+                </p>
+              )}
+            </Link>
           ))}
-        </ul>
+        </div>
       )}
     </main>
   );

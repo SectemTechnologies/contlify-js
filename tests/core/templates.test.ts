@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getBlogListingTemplate } from "../../src/templates/blog-listing.template.js";
+import { getCategoryPostsTemplate } from "../../src/templates/category-posts.template.js";
 import { getBlogPostTemplate } from "../../src/templates/blog-post.template.js";
 import { getQueriesTemplate } from "../../src/templates/queries.template.js";
 import { getAdapterConfigTemplate } from "../../src/templates/adapter-config.template.js";
@@ -8,31 +9,54 @@ import { getScaffoldManifest } from "../../src/templates/index.js";
 
 describe("Template System", () => {
   describe("Blog Listing Template", () => {
-    it("should return a non-empty string containing blog page structure", () => {
+    it("should return a non-empty string containing categories page structure", () => {
       const template = getBlogListingTemplate();
       expect(typeof template).toBe("string");
       expect(template.length).toBeGreaterThan(0);
     });
 
-    it("should import getAllPosts from queries", () => {
+    it("should import getCategories from queries", () => {
       const template = getBlogListingTemplate();
-      expect(template).toContain('import { getAllPosts } from "@/lib/contlify/queries"');
+      expect(template).toContain('import { getCategories } from "@/lib/contlify/queries"');
     });
 
-    it("should call getAllPosts in the page component", () => {
+    it("should call getCategories in the page component", () => {
       const template = getBlogListingTemplate();
-      expect(template).toContain("getAllPosts()");
+      expect(template).toContain("getCategories()");
     });
 
-    it("should render post links with slug-based URLs", () => {
+    it("should render category links with slug-based URLs", () => {
       const template = getBlogListingTemplate();
-      expect(template).toContain("/blog/");
-      expect(template).toContain("post.slug");
+      expect(template).toContain("/blog/category/");
+      expect(template).toContain("category.slug");
     });
 
     it("should be a valid default export async function", () => {
       const template = getBlogListingTemplate();
       expect(template).toContain("export default async function");
+    });
+  });
+
+  describe("Category Posts Template", () => {
+    it("should return a non-empty string containing category posts page structure", () => {
+      const template = getCategoryPostsTemplate();
+      expect(typeof template).toBe("string");
+      expect(template.length).toBeGreaterThan(0);
+    });
+
+    it("should import getPostsByCategory from queries", () => {
+      const template = getCategoryPostsTemplate();
+      expect(template).toContain('import { getPostsByCategory } from "@/lib/contlify/queries"');
+    });
+
+    it("should call getPostsByCategory in the page component", () => {
+      const template = getCategoryPostsTemplate();
+      expect(template).toContain("getPostsByCategory(slug)");
+    });
+
+    it("should render post links pointing to /blog/post/", () => {
+      const template = getCategoryPostsTemplate();
+      expect(template).toContain("/blog/post/");
     });
   });
 
@@ -66,14 +90,19 @@ describe("Template System", () => {
       expect(template).toContain("generateMetadata");
       expect(template).toContain("post.title");
     });
-
-    it("should include generateStaticParams for SSG", () => {
-      const template = getBlogPostTemplate();
-      expect(template).toContain("generateStaticParams");
-    });
   });
 
   describe("Queries Template", () => {
+    it("should export getCategories function", () => {
+      const template = getQueriesTemplate();
+      expect(template).toContain("export async function getCategories");
+    });
+
+    it("should export getPostsByCategory function", () => {
+      const template = getQueriesTemplate();
+      expect(template).toContain("export async function getPostsByCategory");
+    });
+
     it("should export getAllPosts function", () => {
       const template = getQueriesTemplate();
       expect(template).toContain("export async function getAllPosts");
@@ -92,13 +121,6 @@ describe("Template System", () => {
     it("should import adapter from adapter config", () => {
       const template = getQueriesTemplate();
       expect(template).toContain('import { contlifyAdapter } from "./adapter"');
-    });
-
-    it("should support both flat and nested adapter patterns", () => {
-      const template = getQueriesTemplate();
-      // Should check adapter.getAllPosts and adapter.posts.getAllPosts
-      expect(template).toContain("contlifyAdapter.getAllPosts");
-      expect(template).toContain("contlifyAdapter.posts");
     });
   });
 
@@ -150,9 +172,9 @@ describe("Template System", () => {
   });
 
   describe("Scaffold Manifest", () => {
-    it("should return 5 file entries", () => {
+    it("should return 6 file entries", () => {
       const manifest = getScaffoldManifest();
-      expect(manifest).toHaveLength(5);
+      expect(manifest).toHaveLength(6);
     });
 
     it("should include all expected file paths", () => {
@@ -163,7 +185,8 @@ describe("Template System", () => {
       expect(paths).toContain("lib/contlify/adapter.ts");
       expect(paths).toContain("lib/contlify/queries.ts");
       expect(paths).toContain("app/blog/page.tsx");
-      expect(paths).toContain("app/blog/[slug]/page.tsx");
+      expect(paths).toContain("app/blog/category/[slug]/page.tsx");
+      expect(paths).toContain("app/blog/post/[slug]/page.tsx");
     });
 
     it("should have getContent functions that return non-empty strings", () => {

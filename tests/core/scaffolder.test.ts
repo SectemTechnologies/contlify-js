@@ -17,11 +17,11 @@ describe("Scaffolder", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should create all 5 scaffold files in the target directory", () => {
+  it("should create all 6 scaffold files in the target directory", () => {
     const results = scaffoldProject({ projectRoot: tempDir });
 
     const created = results.filter((r) => r.status === "created");
-    expect(created).toHaveLength(5);
+    expect(created).toHaveLength(6);
 
     // Verify files actually exist on disk
     for (const result of created) {
@@ -34,7 +34,8 @@ describe("Scaffolder", () => {
     scaffoldProject({ projectRoot: tempDir });
 
     expect(fs.existsSync(path.join(tempDir, "app/api/contlify/[...path]"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "app/blog/[slug]"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/blog/category/[slug]"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/blog/post/[slug]"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, "lib/contlify"))).toBe(true);
   });
 
@@ -51,7 +52,7 @@ describe("Scaffolder", () => {
       path.join(tempDir, "lib/contlify/queries.ts"),
       "utf-8"
     );
-    expect(queriesContent).toContain("getAllPosts");
+    expect(queriesContent).toContain("getCategories");
 
     const blogPage = fs.readFileSync(
       path.join(tempDir, "app/blog/page.tsx"),
@@ -119,7 +120,7 @@ describe("Scaffolder", () => {
   it("should support 'only' filter to scaffold specific files", () => {
     const results = scaffoldProject({
       projectRoot: tempDir,
-      only: ["app/blog/page.tsx", "app/blog/[slug]/page.tsx"],
+      only: ["app/blog/page.tsx", "app/blog/post/[slug]/page.tsx"],
     });
 
     expect(results).toHaveLength(2);
@@ -127,7 +128,7 @@ describe("Scaffolder", () => {
 
     // Only blog pages should exist
     expect(fs.existsSync(path.join(tempDir, "app/blog/page.tsx"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "app/blog/[slug]/page.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/blog/post/[slug]/page.tsx"))).toBe(true);
 
     // Other files should NOT exist
     expect(fs.existsSync(path.join(tempDir, "lib/contlify/adapter.ts"))).toBe(false);
@@ -139,7 +140,7 @@ describe("Scaffolder", () => {
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("✅ Created");
-      expect(output).toContain("5 created");
+      expect(output).toContain("6 created");
       expect(output).toContain("0 skipped");
       expect(output).toContain("0 errors");
     });
@@ -150,7 +151,7 @@ describe("Scaffolder", () => {
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("Skipped");
-      expect(output).toContain("5 skipped");
+      expect(output).toContain("6 skipped");
     });
   });
 });

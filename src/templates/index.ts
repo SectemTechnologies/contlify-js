@@ -1,10 +1,12 @@
 import { getBlogListingTemplate } from "./blog-listing.template.js";
+import { getCategoryPostsTemplate } from "./category-posts.template.js";
 import { getBlogPostTemplate } from "./blog-post.template.js";
 import { getQueriesTemplate } from "./queries.template.js";
 import { getAdapterConfigTemplate } from "./adapter-config.template.js";
 import { getApiRouteTemplate } from "./api-route.template.js";
 
 export { getBlogListingTemplate } from "./blog-listing.template.js";
+export { getCategoryPostsTemplate } from "./category-posts.template.js";
 export { getBlogPostTemplate } from "./blog-post.template.js";
 export { getQueriesTemplate } from "./queries.template.js";
 export { getAdapterConfigTemplate } from "./adapter-config.template.js";
@@ -46,10 +48,15 @@ export function getScaffoldManifest(): ScaffoldFileEntry[] {
     {
       relativePath: "app/blog/page.tsx",
       getContent: getBlogListingTemplate,
-      description: "Blog listing page",
+      description: "Blog categories page",
     },
     {
-      relativePath: "app/blog/[slug]/page.tsx",
+      relativePath: "app/blog/category/[slug]/page.tsx",
+      getContent: getCategoryPostsTemplate,
+      description: "Category posts page",
+    },
+    {
+      relativePath: "app/blog/post/[slug]/page.tsx",
       getContent: getBlogPostTemplate,
       description: "Single blog post page",
     },

@@ -6,8 +6,36 @@
  * Users can customize or replace this file entirely.
  */
 export function getQueriesTemplate(): string {
-  return `import type { Post } from "contlify";
+  return `import type { Post, Category } from "contlify";
 import { contlifyAdapter } from "./adapter";
+
+/**
+ * Fetch all categories from the database.
+ */
+export async function getCategories(): Promise<Category[]> {
+  if (typeof contlifyAdapter.getCategories === "function") {
+    return (await contlifyAdapter.getCategories()) as Category[];
+  }
+
+  if (contlifyAdapter.categories && typeof contlifyAdapter.categories.getAll === "function") {
+    return (await contlifyAdapter.categories.getAll()) as Category[];
+  }
+
+  console.warn("[contlify] Adapter does not implement getCategories. Returning empty array.");
+  return [];
+}
+
+/**
+ * Fetch all published blog posts in a specific category by category slug.
+ */
+export async function getPostsByCategory(categorySlug: string): Promise<Post[]> {
+  if (typeof contlifyAdapter.getPostsByCategory === "function") {
+    return await contlifyAdapter.getPostsByCategory(categorySlug);
+  }
+
+  console.warn("[contlify] Adapter does not implement getPostsByCategory. Returning empty array.");
+  return [];
+}
 
 /**
  * Fetch all published blog posts, sorted by most recent first.
