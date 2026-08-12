@@ -32,9 +32,21 @@ const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
 /**
  * Generates the adapter.ts content for the chosen database.
  */
-function buildAdapterContent(dbType: SupportedDatabaseType): string {
+function buildAdapterContent(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string {
   switch (dbType) {
     case "postgres":
+      if (pgTarget === "cloudflare") {
+        return `import { Pool } from "@neondatabase/serverless";
+import { createPostgresAdapter } from "contlify";
+
+// Initialize your Neon Serverless connection pool for Cloudflare Workers / Edge
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const contlifyAdapter = createPostgresAdapter(pool);
+`;
+      }
       return `import { Pool } from "pg";
 import { createPostgresAdapter } from "contlify";
 
@@ -94,9 +106,21 @@ export const contlifyAdapter = createMongoAdapter(async () => {
 /**
  * Returns a .env.local snippet with the relevant DB env vars for the chosen database.
  */
-function buildEnvSnippet(dbType: SupportedDatabaseType): string {
+function buildEnvSnippet(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string {
   switch (dbType) {
     case "postgres":
+      if (pgTarget === "cloudflare") {
+        return `# .env.local
+DATABASE_URL=postgresql://user:password@ep-something.neon.tech/dbname?sslmode=require
+
+# Contlify API Key (set in your CMS dashboard)
+CONTLIFY_API_KEY=your_api_key_here
+
+# ⚠️ For Cloudflare Workers / OpenNext deployment, set secret via Wrangler:
+# npx wrangler secret put DATABASE_URL
+# npx wrangler secret put CONTLIFY_API_KEY
+`;
+      }
       return `# .env.local
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
@@ -133,9 +157,9 @@ CONTLIFY_API_KEY=your_api_key_here
 /**
  * Returns the npm package to install for the chosen database.
  */
-function getDbPackage(dbType: SupportedDatabaseType): string | null {
+function getDbPackage(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string | null {
   switch (dbType) {
-    case "postgres":  return "pg @types/pg";
+    case "postgres":  return pgTarget === "cloudflare" ? "@neondatabase/serverless" : "pg @types/pg";
     case "supabase":  return "@supabase/supabase-js";
     case "d1":        return null; // bundled with Cloudflare Workers
     case "mongodb":   return "mongodb";
@@ -214,11 +238,19 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   // Step 1: Choose database
   const dbType = await select("  Which database are you using?", DB_CHOICES);
 
+  let pgTarget: "node" | "cloudflare" = "node";
+  if (dbType === "postgres") {
+    pgTarget = await select("  Where is your project hosted / deployed?", [
+      { label: "Node.js / Vercel / Railway / Render / Docker (Standard pg)", value: "node" },
+      { label: "Cloudflare Workers / OpenNext (Neon Serverless Driver)",      value: "cloudflare" },
+    ]);
+  }
+
   // Step 2: Confirm scaffold
   log("");
   info(`  ℹ️  The following files will be generated in your project:`);
   log(`     ${dim("app/api/contlify/[...path]/route.ts")} — API route handler`);
-  log(`     ${dim("lib/contlify/adapter.ts")}             — Database adapter (${dbType})`);
+  log(`     ${dim("lib/contlify/adapter.ts")}             — Database adapter (${dbType}${dbType === "postgres" ? ` - ${pgTarget}` : ""})`);
   log(`     ${dim("lib/contlify/queries.ts")}             — Blog read queries`);
   log(`     ${dim("app/blog/page.tsx")}                   — Blog listing page`);
   log(`     ${dim("app/blog/[slug]/page.tsx")}            — Single post page`);
@@ -231,7 +263,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   }
 
   // Step 3: Install the required database driver
-  const dbPkg = getDbPackage(dbType);
+  const dbPkg = getDbPackage(dbType, pgTarget);
   if (dbPkg) {
     log("");
     info(`  📦 Installing ${dbPkg}...`);
@@ -251,7 +283,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
 
   // Override adapter.ts with the DB-specific content
   const adapterPath = path.join(projectRoot, "lib/contlify/adapter.ts");
-  const adapterContent = buildAdapterContent(dbType);
+  const adapterContent = buildAdapterContent(dbType, pgTarget);
   fs.writeFileSync(adapterPath, adapterContent, "utf-8");
 
   log(formatScaffoldResults(results));
@@ -280,7 +312,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("");
   info("  🔑 Add these to your .env.local:");
   log("");
-  log(buildEnvSnippet(dbType).split("\n").map(l => `  ${dim(l)}`).join("\n"));
+  log(buildEnvSnippet(dbType, pgTarget).split("\n").map(l => `  ${dim(l)}`).join("\n"));
 
   // Done!
   log("");

@@ -10,6 +10,37 @@ export function getQueriesTemplate(): string {
 import { contlifyAdapter } from "./adapter";
 
 /**
+<<<<<<< Updated upstream
+=======
+ * Fetch all categories from the database.
+ */
+export async function getCategories(): Promise<Category[]> {
+  if (typeof contlifyAdapter.getCategories === "function") {
+    return (await contlifyAdapter.getCategories()) as Category[];
+  }
+
+  if (contlifyAdapter.categories && typeof contlifyAdapter.categories.getCategories === "function") {
+    return (await contlifyAdapter.categories.getCategories()) as Category[];
+  }
+
+  console.warn("[contlify] Adapter does not implement getCategories. Returning empty array.");
+  return [];
+}
+
+/**
+ * Fetch all published blog posts in a specific category by category slug.
+ */
+export async function getPostsByCategory(categorySlug: string): Promise<Post[]> {
+  if (typeof contlifyAdapter.getPostsByCategory === "function") {
+    return await contlifyAdapter.getPostsByCategory(categorySlug);
+  }
+
+  console.warn("[contlify] Adapter does not implement getPostsByCategory. Returning empty array.");
+  return [];
+}
+
+/**
+>>>>>>> Stashed changes
  * Fetch all published blog posts, sorted by most recent first.
  */
 export async function getAllPosts(): Promise<Post[]> {
