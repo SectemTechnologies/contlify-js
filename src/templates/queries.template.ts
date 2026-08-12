@@ -17,8 +17,8 @@ export async function getCategories(): Promise<Category[]> {
     return (await contlifyAdapter.getCategories()) as Category[];
   }
 
-  if (contlifyAdapter.categories && typeof contlifyAdapter.categories.getAll === "function") {
-    return (await contlifyAdapter.categories.getAll()) as Category[];
+  if (contlifyAdapter.categories && typeof contlifyAdapter.categories.getCategories === "function") {
+    return (await contlifyAdapter.categories.getCategories()) as Category[];
   }
 
   console.warn("[contlify] Adapter does not implement getCategories. Returning empty array.");

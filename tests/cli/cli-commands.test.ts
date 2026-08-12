@@ -33,7 +33,7 @@ describe("CLI Commands (Phase 3)", () => {
 
   describe("runInit", () => {
     it("should scaffold all files when user selects postgres and confirms", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -47,14 +47,27 @@ describe("CLI Commands (Phase 3)", () => {
       expect(fs.existsSync(path.join(tempDir, "app/api/contlify/[...path]/route.ts"))).toBe(true);
     });
 
-    it("should write DB-specific adapter content for postgres", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+    it("should write DB-specific adapter content for postgres (node)", async () => {
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
 
       const adapterContent = fs.readFileSync(path.join(tempDir, "lib/contlify/adapter.ts"), "utf-8");
       expect(adapterContent).toContain("createPostgresAdapter");
+      expect(adapterContent).toContain('import { Pool } from "pg"');
+      expect(adapterContent).toContain("DATABASE_URL");
+    });
+
+    it("should write DB-specific adapter content for postgres (cloudflare / neon edge)", async () => {
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("cloudflare");
+      vi.mocked(confirm).mockResolvedValueOnce(true);
+
+      await runInit(tempDir);
+
+      const adapterContent = fs.readFileSync(path.join(tempDir, "lib/contlify/adapter.ts"), "utf-8");
+      expect(adapterContent).toContain("createPostgresAdapter");
+      expect(adapterContent).toContain('import { Pool } from "@neondatabase/serverless"');
       expect(adapterContent).toContain("DATABASE_URL");
     });
 
@@ -92,7 +105,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write migration SQL file for postgres", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -123,7 +136,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should cancel setup without creating files when user denies", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       await runInit(tempDir);
@@ -136,7 +149,7 @@ describe("CLI Commands (Phase 3)", () => {
       fs.mkdirSync(path.join(tempDir, "app/blog"), { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app/blog/page.tsx"), "// existing", "utf-8");
 
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir, { overwrite: false });
@@ -151,7 +164,7 @@ describe("CLI Commands (Phase 3)", () => {
       fs.mkdirSync(path.join(tempDir, "app/blog"), { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app/blog/page.tsx"), "// existing", "utf-8");
 
-      vi.mocked(select).mockResolvedValueOnce("postgres");
+      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir, { overwrite: true });
