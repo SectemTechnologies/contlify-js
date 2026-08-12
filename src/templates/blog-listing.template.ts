@@ -23,7 +23,7 @@ export default async function BlogPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1.5rem" }}>
           {categories.map((category) => {
-            const imageUrl = typeof category.coverImage === "string" ? category.coverImage : category.coverImage?.url;
+            const imageUrl = typeof category.coverImage === "string" ? category.coverImage : (category.coverImage as any)?.url;
             return (
               <Link
                 key={category.id}
@@ -62,12 +62,13 @@ export default async function BlogPage() {
                     <span style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      padding: "0.4rem 0.85rem",
+                      padding: "0.45rem 0.9rem",
                       fontSize: "0.875rem",
-                      fontWeight: "500",
-                      color: "#2563eb",
-                      backgroundColor: "#eff6ff",
+                      fontWeight: "600",
+                      color: "#ffffff",
+                      backgroundColor: "#f97316",
                       borderRadius: "6px",
+                      boxShadow: "0 1px 2px rgba(249, 115, 22, 0.2)",
                     }}>
                       Explore Category &rarr;
                     </span>

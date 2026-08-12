@@ -4,6 +4,11 @@
  * @module contlify
  */
 
+// Edge Runtime Polyfill for esbuild __name helper (Cloudflare Workers / OpenNext)
+if (typeof globalThis !== "undefined" && !(globalThis as Record<string, unknown>).__name) {
+  (globalThis as Record<string, unknown>).__name = (target: unknown) => target;
+}
+
 // Primary Entry Point & Handlers
 export { createContlifyHandler, type ContlifyHandler } from "./core/handler.js";
 export { RequestContext } from "./core/request-context.js";

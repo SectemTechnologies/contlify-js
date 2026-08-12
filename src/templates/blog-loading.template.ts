@@ -10,7 +10,7 @@ export function getBlogLoadingTemplate(): string {
         width: "36px",
         height: "36px",
         border: "3px solid #e5e7eb",
-        borderTopColor: "#0070f3",
+        borderTopColor: "#f97316",
         borderRadius: "50%",
         animation: "contlify-spin 0.8s linear infinite"
       }} />

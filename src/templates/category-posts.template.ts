@@ -19,24 +19,30 @@ export default async function CategoryPostsPage({ params }: PageProps) {
 
   return (
     <main style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <div style={{ marginBottom: "2rem" }}>
-        <Link
+      <div style={{ marginTop: "1rem", marginBottom: "2rem", position: "relative", zIndex: 99 }}>
+        <a
           href="/blog"
           style={{
             display: "inline-flex",
             alignItems: "center",
-            padding: "0.5rem 1rem",
+            padding: "0.55rem 1.1rem",
             fontSize: "0.875rem",
-            fontWeight: "500",
-            color: "#374151",
-            backgroundColor: "#f3f4f6",
-            borderRadius: "6px",
+            fontWeight: "600",
+            color: "#c2410c",
+            backgroundColor: "#fff7ed",
+            borderRadius: "8px",
             textDecoration: "none",
-            border: "1px solid #e5e7eb",
+            border: "1px solid #fed7aa",
+            cursor: "pointer",
+            position: "relative",
+            zIndex: 99,
+            pointerEvents: "auto",
+            boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+            userSelect: "none",
           }}
         >
           &larr; Back to Categories
-        </Link>
+        </a>
       </div>
 
       <h1 style={{ fontSize: "2.25rem", fontWeight: "700", margin: "0 0 0.5rem 0", color: "#111827" }}>{categoryName}</h1>
@@ -51,7 +57,7 @@ export default async function CategoryPostsPage({ params }: PageProps) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           {posts.map((post) => {
-            const imageUrl = typeof post.coverImage === "string" ? post.coverImage : post.coverImage?.url;
+            const imageUrl = typeof post.coverImage === "string" ? post.coverImage : (post.coverImage as any)?.url;
             return (
               <article
                 key={post.id}
@@ -89,13 +95,14 @@ export default async function CategoryPostsPage({ params }: PageProps) {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "0.4rem 0.85rem",
+                        padding: "0.45rem 0.9rem",
                         fontSize: "0.875rem",
-                        fontWeight: "500",
-                        color: "#2563eb",
-                        backgroundColor: "#eff6ff",
+                        fontWeight: "600",
+                        color: "#ffffff",
+                        backgroundColor: "#f97316",
                         borderRadius: "6px",
                         textDecoration: "none",
+                        boxShadow: "0 1px 2px rgba(249, 115, 22, 0.2)",
                       }}
                     >
                       Read Article &rarr;
