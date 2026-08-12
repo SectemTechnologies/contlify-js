@@ -5,18 +5,13 @@
 export function getBlogPostTemplate(): string {
   return `import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getPostBySlug, getAllPosts } from "@/lib/contlify/queries";
+import { getPostBySlug } from "@/lib/contlify/queries";
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>;
 }
 
 export const dynamic = "force-dynamic";
-
-export async function generateStaticParams() {
-  const posts = await getAllPosts();
-  return posts.map((post) => ({ slug: post.slug }));
-}
 
 export async function generateMetadata({ params }: BlogPostPageProps) {
   const { slug } = await params;

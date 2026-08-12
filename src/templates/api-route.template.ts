@@ -6,6 +6,8 @@ export function getApiRouteTemplate(): string {
   return `import { createContlifyHandler } from "contlify";
 import { contlifyAdapter } from "@/lib/contlify/adapter";
 
+export const dynamic = "force-dynamic";
+
 const handler = createContlifyHandler({
   apiKey: process.env.CONTLIFY_API_KEY,
   adapter: contlifyAdapter,

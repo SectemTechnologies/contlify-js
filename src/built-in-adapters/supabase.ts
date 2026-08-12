@@ -86,16 +86,22 @@ export function createSupabaseAdapter(client: SupabaseClientLike): ContlifyAdapt
         }, { onConflict: "slug" }).then(() => resolve());
       });
 
-      // Handle author
+      // Handle author (supports string name or author object)
       if (payload.author) {
-        const authorSlug = slugify(payload.author.slug ?? payload.author.name);
-        const authorId = payload.author.externalId ?? `author_${authorSlug}`;
+        const authorObj = typeof payload.author === "string" ? { name: payload.author } : (payload.author as Record<string, unknown>);
+        const authorName = (authorObj.name as string | undefined) || "Unknown Author";
+        const authorSlug = slugify((authorObj.slug as string | undefined) ?? authorName);
+        const authorId = (authorObj.externalId as string | undefined) ?? `author_${authorSlug}`;
+        const avatarStr = typeof authorObj.avatar === "object" && authorObj.avatar !== null
+          ? (authorObj.avatar as { url?: string }).url ?? null
+          : (authorObj.avatar as string | undefined) ?? null;
+
         await new Promise<void>((resolve) => {
           client.from("contlify_authors").upsert({
-            id: authorId, name: payload.author!.name, slug: authorSlug,
-            email: payload.author!.email ?? null,
-            bio: payload.author!.bio ?? null,
-            avatar: payload.author!.avatar ?? null,
+            id: authorId, name: authorName, slug: authorSlug,
+            email: (authorObj.email as string) ?? null,
+            bio: (authorObj.bio as string) ?? null,
+            avatar: avatarStr,
             created_at: now, updated_at: now,
           }, { onConflict: "slug" }).then(() => resolve());
         });
@@ -104,14 +110,16 @@ export function createSupabaseAdapter(client: SupabaseClientLike): ContlifyAdapt
         });
       }
 
-      // Handle categories
+      // Handle categories (supports array of strings or category objects)
       if (payload.categories?.length) {
-        for (const cat of payload.categories) {
-          const catSlug = slugify(cat.slug ?? cat.name);
-          const catId = cat.externalId ?? `cat_${catSlug}`;
+        for (const rawCat of payload.categories) {
+          const cat = typeof rawCat === "string" ? { name: rawCat } : (rawCat as Record<string, unknown>);
+          const catName = (cat.name as string | undefined) || "Uncategorized";
+          const catSlug = slugify((cat.slug as string | undefined) ?? catName);
+          const catId = (cat.externalId as string | undefined) ?? `cat_${catSlug}`;
           await new Promise<void>((resolve) => {
             client.from("contlify_categories").upsert(
-              { id: catId, name: cat.name, slug: catSlug, created_at: now, updated_at: now },
+              { id: catId, name: catName, slug: catSlug, created_at: now, updated_at: now },
               { onConflict: "slug" }
             ).then(() => resolve());
           });
@@ -124,14 +132,16 @@ export function createSupabaseAdapter(client: SupabaseClientLike): ContlifyAdapt
         }
       }
 
-      // Handle tags
+      // Handle tags (supports array of strings or tag objects)
       if (payload.tags?.length) {
-        for (const tag of payload.tags) {
-          const tagSlug = slugify(tag.slug ?? tag.name);
-          const tagId = tag.externalId ?? `tag_${tagSlug}`;
+        for (const rawTag of payload.tags) {
+          const tag = typeof rawTag === "string" ? { name: rawTag } : (rawTag as Record<string, unknown>);
+          const tagName = (tag.name as string | undefined) || "General";
+          const tagSlug = slugify((tag.slug as string | undefined) ?? tagName);
+          const tagId = (tag.externalId as string | undefined) ?? `tag_${tagSlug}`;
           await new Promise<void>((resolve) => {
             client.from("contlify_tags").upsert(
-              { id: tagId, name: tag.name, slug: tagSlug, created_at: now, updated_at: now },
+              { id: tagId, name: tagName, slug: tagSlug, created_at: now, updated_at: now },
               { onConflict: "slug" }
             ).then(() => resolve());
           });

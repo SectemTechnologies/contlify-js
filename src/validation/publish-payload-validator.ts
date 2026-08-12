@@ -69,6 +69,28 @@ export class PublishPayloadValidator implements ValidatorContract<PublishPostPay
       return { success: false, errors };
     }
 
+    // Normalize author, categories, and tags to standard object format if passed as strings
+    let normalizedAuthor: PublishPostPayload["author"] = undefined;
+    if (typeof postData.author === "string" && postData.author.trim() !== "") {
+      normalizedAuthor = { name: postData.author.trim() };
+    } else if (postData.author && typeof postData.author === "object") {
+      normalizedAuthor = postData.author as PublishPostPayload["author"];
+    }
+
+    let normalizedCategories: PublishPostPayload["categories"] = undefined;
+    if (Array.isArray(postData.categories)) {
+      normalizedCategories = postData.categories.map((c) =>
+        typeof c === "string" ? { name: c.trim() } : (c as { name: string; slug?: string; externalId?: string; description?: string })
+      );
+    }
+
+    let normalizedTags: PublishPostPayload["tags"] = undefined;
+    if (Array.isArray(postData.tags)) {
+      normalizedTags = postData.tags.map((t) =>
+        typeof t === "string" ? { name: t.trim() } : (t as { name: string; slug?: string; externalId?: string })
+      );
+    }
+
     // Normalize and construct clean PublishPostPayload object
     const normalizedPayload: PublishPostPayload & Record<string, unknown> = {
       title: (postData.title as string).trim(),
@@ -78,9 +100,9 @@ export class PublishPayloadValidator implements ValidatorContract<PublishPostPay
       slug: typeof customSlug === "string" ? customSlug.trim() : undefined,
       subtitle: typeof postData.subtitle === "string" ? postData.subtitle : undefined,
       excerpt: typeof postData.excerpt === "string" ? postData.excerpt : undefined,
-      author: postData.author as PublishPostPayload["author"],
-      categories: postData.categories as PublishPostPayload["categories"],
-      tags: postData.tags as PublishPostPayload["tags"],
+      author: normalizedAuthor,
+      categories: normalizedCategories,
+      tags: normalizedTags,
       featured_image: (postData.featured_image ?? postData.coverImage) as MediaAsset | string | undefined,
       coverImage: (postData.coverImage ?? postData.featured_image) as MediaAsset | string | undefined,
       meta_title: typeof postData.meta_title === "string" ? postData.meta_title : undefined,

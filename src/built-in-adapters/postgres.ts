@@ -94,27 +94,36 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
         ]
       );
 
-      // Handle author
+      // Handle author (supports string name or author object)
       if (payload.author) {
-        const authorSlug = slugify(payload.author.slug ?? payload.author.name);
-        const authorId = payload.author.externalId ?? `author_${authorSlug}`;
+        const authorObj = typeof payload.author === "string" ? { name: payload.author } : (payload.author as Record<string, unknown>);
+        const authorName = (authorObj.name as string | undefined) || "Unknown Author";
+        const authorSlug = slugify((authorObj.slug as string | undefined) ?? authorName);
+        const authorId = (authorObj.externalId as string | undefined) ?? `author_${authorSlug}`;
+        const avatarStr = typeof authorObj.avatar === "object" && authorObj.avatar !== null
+          ? (authorObj.avatar as { url?: string }).url ?? null
+          : (authorObj.avatar as string | undefined) ?? null;
+
         await client.query(
           `INSERT INTO contlify_authors (id, name, slug, email, bio, avatar, created_at, updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
            ON CONFLICT (slug) DO UPDATE SET name=$2, email=$4, bio=$5, avatar=$6, updated_at=$8`,
-          [authorId, payload.author.name, authorSlug, payload.author.email ?? null, payload.author.bio ?? null, payload.author.avatar ?? null, now, now]
+          [authorId, authorName, authorSlug, (authorObj.email as string) ?? null, (authorObj.bio as string) ?? null, avatarStr, now, now]
         );
         await client.query(`UPDATE contlify_posts SET author_id=$1 WHERE id=$2`, [authorId, id]);
       }
 
-      // Handle categories
+      // Handle categories (supports array of strings or category objects)
       if (payload.categories?.length) {
-        for (const cat of payload.categories) {
-          const catSlug = slugify(cat.slug ?? cat.name);
-          const catId = cat.externalId ?? `cat_${catSlug}`;
+        for (const rawCat of payload.categories) {
+          const cat = typeof rawCat === "string" ? { name: rawCat } : (rawCat as Record<string, unknown>);
+          const catName = (cat.name as string | undefined) || "Uncategorized";
+          const catSlug = slugify((cat.slug as string | undefined) ?? catName);
+          const catId = (cat.externalId as string | undefined) ?? `cat_${catSlug}`;
+
           await client.query(
             `INSERT INTO contlify_categories (id, name, slug, created_at, updated_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (slug) DO NOTHING`,
-            [catId, cat.name, catSlug, now, now]
+            [catId, catName, catSlug, now, now]
           );
           await client.query(
             `INSERT INTO contlify_post_categories (post_id, category_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
@@ -123,14 +132,17 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
         }
       }
 
-      // Handle tags
+      // Handle tags (supports array of strings or tag objects)
       if (payload.tags?.length) {
-        for (const tag of payload.tags) {
-          const tagSlug = slugify(tag.slug ?? tag.name);
-          const tagId = tag.externalId ?? `tag_${tagSlug}`;
+        for (const rawTag of payload.tags) {
+          const tag = typeof rawTag === "string" ? { name: rawTag } : (rawTag as Record<string, unknown>);
+          const tagName = (tag.name as string | undefined) || "General";
+          const tagSlug = slugify((tag.slug as string | undefined) ?? tagName);
+          const tagId = (tag.externalId as string | undefined) ?? `tag_${tagSlug}`;
+
           await client.query(
             `INSERT INTO contlify_tags (id, name, slug, created_at, updated_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (slug) DO NOTHING`,
-            [tagId, tag.name, tagSlug, now, now]
+            [tagId, tagName, tagSlug, now, now]
           );
           await client.query(
             `INSERT INTO contlify_post_tags (post_id, tag_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,

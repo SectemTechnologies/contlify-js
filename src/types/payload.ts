@@ -20,18 +20,18 @@ export interface PublishPostPayload {
     email?: string;
     bio?: string;
     avatar?: MediaAsset | string;
-  };
+  } | string;
   categories?: Array<{
     externalId?: string;
     slug?: string;
     name: string;
     description?: string;
-  }>;
+  } | string>;
   tags?: Array<{
     externalId?: string;
     slug?: string;
     name: string;
-  }>;
+  } | string>;
   seo?: SeoMetadata;
   publishedAt?: string;
   customFields?: Record<string, unknown>;

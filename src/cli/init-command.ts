@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { scaffoldProject, formatScaffoldResults } from "./scaffolder.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
@@ -70,22 +71,22 @@ export const contlifyAdapter = createD1Adapter(async () => {
 `;
 
     case "mongodb":
-      return `import { MongoClient } from "mongodb";
-import { createMongoAdapter } from "contlify";
+      return `import { createMongoAdapter } from "contlify";
 
-const client = new MongoClient(process.env.MONGODB_URI!);
+let _client: import("mongodb").MongoClient | null = null;
 
-// Singleton connection pattern
-let connected = false;
-async function getDb() {
-  if (!connected) {
-    await client.connect();
-    connected = true;
-  }
-  return client.db(process.env.MONGODB_DB_NAME ?? "contlify");
-}
+export const contlifyAdapter = createMongoAdapter(async () => {
+  // Skip DB connection during Next.js production build
+  if (process.env.NEXT_PHASE === "phase-production-build") return null;
 
-export const contlifyAdapter = createMongoAdapter(await getDb());
+  const uri = process.env.MONGODB_URI;
+  if (!uri) return null;
+
+  // Dynamic import prevents webpack from analyzing mongodb at build time
+  const { MongoClient } = await import("mongodb");
+  if (!_client) _client = new MongoClient(uri);
+  return _client.db(process.env.MONGODB_DB_NAME ?? "contlify");
+});
 `;
   }
 }
@@ -127,6 +128,45 @@ MONGODB_DB_NAME=contlify
 CONTLIFY_API_KEY=your_api_key_here
 `;
   }
+}
+
+/**
+ * Returns the npm package to install for the chosen database.
+ */
+function getDbPackage(dbType: SupportedDatabaseType): string | null {
+  switch (dbType) {
+    case "postgres":  return "pg @types/pg";
+    case "supabase":  return "@supabase/supabase-js";
+    case "d1":        return null; // bundled with Cloudflare Workers
+    case "mongodb":   return "mongodb";
+  }
+}
+
+/**
+ * Patches next.config.mjs to add serverExternalPackages for the given package.
+ */
+function patchNextConfig(projectRoot: string, pkg: string): void {
+  const configPaths = [
+    path.join(projectRoot, "next.config.mjs"),
+    path.join(projectRoot, "next.config.js"),
+    path.join(projectRoot, "next.config.ts"),
+  ];
+
+  const configPath = configPaths.find(p => fs.existsSync(p));
+  if (!configPath) return;
+
+  let content = fs.readFileSync(configPath, "utf-8");
+
+  // Already patched
+  if (content.includes("serverExternalPackages")) return;
+
+  // Insert serverExternalPackages into the config object
+  content = content.replace(
+    /const nextConfig\s*=\s*\{/,
+    `const nextConfig = {\n  serverExternalPackages: ["${pkg}"],`
+  );
+
+  fs.writeFileSync(configPath, content, "utf-8");
 }
 
 /**
@@ -190,7 +230,20 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     return;
   }
 
-  // Step 3: Scaffold files
+  // Step 3: Install the required database driver
+  const dbPkg = getDbPackage(dbType);
+  if (dbPkg) {
+    log("");
+    info(`  📦 Installing ${dbPkg}...`);
+    try {
+      execSync(`npm install ${dbPkg}`, { cwd: projectRoot, stdio: "inherit" });
+      success(`  ✅ ${dbPkg} installed.`);
+    } catch {
+      warn(`  ⚠️  Could not auto-install ${dbPkg}. Run: npm install ${dbPkg}`);
+    }
+  }
+
+  // Step 4: Scaffold files
   log("");
   info("  📁 Scaffolding files...");
 
@@ -203,7 +256,13 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
 
   log(formatScaffoldResults(results));
 
-  // Step 4: Write migration SQL file
+  // Patch next.config.mjs for packages that need serverExternalPackages
+  if (dbType === "mongodb") {
+    patchNextConfig(projectRoot, "mongodb");
+    success("  ✅ next.config.mjs patched with serverExternalPackages.");
+  }
+
+  // Step 5: Write migration SQL file
   log("");
   if (dbType !== "mongodb") {
     info("  📄 Generating migration SQL...");
@@ -217,7 +276,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     log(getMigrationInstructions(dbType, sqlFileName));
   }
 
-  // Step 5: Show env snippet
+  // Step 6: Show env snippet
   log("");
   info("  🔑 Add these to your .env.local:");
   log("");
