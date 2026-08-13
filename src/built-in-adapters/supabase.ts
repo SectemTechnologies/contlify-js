@@ -42,7 +42,7 @@ export interface SupabaseQuery {
  * const adapter = createSupabaseAdapter(supabase);
  * ```
  */
-export function createSupabaseAdapter(client: SupabaseClientLike): ContlifyAdapter {
+export function createSupabaseAdapter(client: any): ContlifyAdapter {
 
   async function queryAll<T>(query: SupabaseQuery): Promise<T[]> {
     return new Promise<T[]>((resolve) => {

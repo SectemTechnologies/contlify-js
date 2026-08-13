@@ -24,9 +24,9 @@ function dim(msg: string) { return `${COLORS.dim}${msg}${COLORS.reset}`; }
 
 const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
   { label: "PostgreSQL (pg / Neon / Railway / Vercel Postgres)", value: "postgres" },
-  { label: "Supabase",                                            value: "supabase" },
-  { label: "Cloudflare D1 (SQLite)",                             value: "d1"       },
-  { label: "MongoDB",                                            value: "mongodb"  },
+  { label: "Supabase", value: "supabase" },
+  { label: "Cloudflare D1 (SQLite)", value: "d1" },
+  { label: "MongoDB", value: "mongodb" },
 ];
 
 /**
@@ -68,7 +68,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role key for server-side writes
 );
 
-export const contlifyAdapter = createSupabaseAdapter(supabase);
+export const contlifyAdapter = createSupabaseAdapter(supabase as any);
 `;
 
     case "d1":
@@ -159,10 +159,10 @@ CONTLIFY_API_KEY=your_api_key_here
  */
 function getDbPackage(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string | null {
   switch (dbType) {
-    case "postgres":  return pgTarget === "cloudflare" ? "@neondatabase/serverless" : "pg @types/pg";
-    case "supabase":  return "@supabase/supabase-js";
-    case "d1":        return null; // bundled with Cloudflare Workers
-    case "mongodb":   return "mongodb";
+    case "postgres": return pgTarget === "cloudflare" ? "@neondatabase/serverless" : "pg @types/pg";
+    case "supabase": return "@supabase/supabase-js";
+    case "d1": return null; // bundled with Cloudflare Workers
+    case "mongodb": return "mongodb";
   }
 }
 
@@ -242,7 +242,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   if (dbType === "postgres") {
     pgTarget = await select("  Where is your project hosted / deployed?", [
       { label: "Node.js / Vercel / Railway / Render / Docker (Standard pg)", value: "node" },
-      { label: "Cloudflare Workers / OpenNext (Neon Serverless Driver)",      value: "cloudflare" },
+      { label: "Cloudflare Workers / OpenNext (Neon Serverless Driver)", value: "cloudflare" },
     ]);
   }
 
