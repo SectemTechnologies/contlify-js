@@ -68,7 +68,7 @@ describe("CLI Commands (Phase 3)", () => {
 
       const adapterContent = fs.readFileSync(path.join(tempDir, "lib/contlify/adapter.ts"), "utf-8");
       expect(adapterContent).toContain("createPostgresAdapter");
-      expect(adapterContent).toContain('import { Pool } from "@neondatabase/serverless"');
+      expect(adapterContent).toContain('import { neon } from "@neondatabase/serverless"');
       expect(adapterContent).toContain("DATABASE_URL");
     });
 
@@ -94,8 +94,8 @@ describe("CLI Commands (Phase 3)", () => {
       expect(adapterContent).toContain("getCloudflareContext");
     });
 
-    it("should write DB-specific adapter content for mongodb", async () => {
-      vi.mocked(select).mockResolvedValueOnce("mongodb");
+    it("should write DB-specific adapter content for mongodb (node)", async () => {
+      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -103,6 +103,18 @@ describe("CLI Commands (Phase 3)", () => {
       const adapterContent = fs.readFileSync(path.join(tempDir, "lib/contlify/adapter.ts"), "utf-8");
       expect(adapterContent).toContain("createMongoAdapter");
       expect(adapterContent).toContain("MONGODB_URI");
+    });
+
+    it("should write DB-specific adapter content for mongodb (cloudflare)", async () => {
+      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("cloudflare");
+      vi.mocked(confirm).mockResolvedValueOnce(true);
+
+      await runInit(tempDir);
+
+      const adapterContent = fs.readFileSync(path.join(tempDir, "lib/contlify/adapter.ts"), "utf-8");
+      expect(adapterContent).toContain("createMongoAdapter");
+      expect(adapterContent).toContain("MONGODB_URI");
+      expect(adapterContent).toContain("connect fresh per request");
     });
 
     it("should write migration SQL file for postgres", async () => {
@@ -128,7 +140,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should NOT write SQL file for mongodb", async () => {
-      vi.mocked(select).mockResolvedValueOnce("mongodb");
+      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);

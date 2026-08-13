@@ -30,21 +30,42 @@ const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
 ];
 
 /**
- * Generates the adapter.ts content for the chosen database.
+ * Generates the adapter.ts content for the chosen database and deployment target.
  */
-function buildAdapterContent(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string {
+function buildAdapterContent(
+  dbType: SupportedDatabaseType,
+  pgTarget: "node" | "cloudflare" = "node",
+  mongoTarget: "node" | "cloudflare" = "node"
+): string {
   switch (dbType) {
     case "postgres":
       if (pgTarget === "cloudflare") {
-        return `import { Pool } from "@neondatabase/serverless";
+        // neon() uses HTTPS fetch per query — no persistent WebSocket connections.
+        // Pool/Client from @neondatabase/serverless use WebSockets which cannot
+        // outlive a single Cloudflare Worker request, causing query hangs (1101).
+        // Neon's pooler endpoint (DATABASE_URL with -pooler suffix) handles server-side
+        // connection pooling automatically.
+        return `import { neon } from "@neondatabase/serverless";
 import { createPostgresAdapter } from "contlify";
 
-// Initialize your Neon Serverless connection pool for Cloudflare Workers / Edge
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+// Use neon() HTTP transport — each query is a fresh HTTPS fetch with no
+// persistent connection. Pool/Client use WebSockets which cannot outlive a
+// single Cloudflare Worker request, causing intermittent query hangs (1101).
+// Neon's pooler endpoint (DATABASE_URL with -pooler suffix) handles server-side
+// connection pooling automatically.
+const _sql = neon(process.env.DATABASE_URL!);
 
-export const contlifyAdapter = createPostgresAdapter(pool);
+const neonHttpClient = {
+  async query<T = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[]
+  ): Promise<{ rows: T[] }> {
+    const rows = await _sql.query(sql, params ?? []);
+    return { rows: rows as unknown as T[] };
+  },
+};
+
+export const contlifyAdapter = createPostgresAdapter(neonHttpClient);
 `;
       }
       return `import { Pool } from "pg";
@@ -60,6 +81,7 @@ export const contlifyAdapter = createPostgresAdapter(pool);
 `;
 
     case "supabase":
+      // @supabase/supabase-js uses HTTPS fetch internally — safe on all runtimes.
       return `import { createClient } from "@supabase/supabase-js";
 import { createSupabaseAdapter } from "contlify";
 
@@ -72,6 +94,7 @@ export const contlifyAdapter = createSupabaseAdapter(supabase as any);
 `;
 
     case "d1":
+      // D1 is a native Cloudflare Workers binding — no external TCP, always safe.
       return `import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createD1Adapter } from "contlify";
 
@@ -83,6 +106,40 @@ export const contlifyAdapter = createD1Adapter(async () => {
 `;
 
     case "mongodb":
+      if (mongoTarget === "cloudflare") {
+        // Cloudflare Workers: MongoClient holds a persistent TCP connection pool
+        // which cannot be reliably reused across Worker invocations. A globally
+        // cached client will go stale and cause query hangs (error 1101).
+        // Connect fresh per request — the Worker's short lifecycle makes this safe.
+        // Consider using Cloudflare D1 or Neon PostgreSQL for better Workers support.
+        return `import { createMongoAdapter } from "contlify";
+
+// Cloudflare Workers: connect fresh per request.
+// A cached MongoClient reused across Worker invocations causes stale TCP
+// connections and intermittent query hangs (error 1101). Connecting per
+// request avoids this at the cost of a small latency overhead per cold query.
+//
+// TIP: For better Cloudflare Workers support consider Cloudflare D1 or
+// Neon PostgreSQL with the neon() HTTP driver instead of MongoDB.
+export const contlifyAdapter = createMongoAdapter(async () => {
+  // Skip DB connection during Next.js production build
+  if (process.env.NEXT_PHASE === "phase-production-build") return null;
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) return null;
+
+  // Dynamic import prevents webpack from analyzing mongodb at build time
+  const { MongoClient } = await import("mongodb");
+  const client = new MongoClient(uri, {
+    serverSelectionTimeoutMS: 5000,
+    connectTimeoutMS: 5000,
+  });
+  await client.connect();
+  return client.db(process.env.MONGODB_DB_NAME ?? "contlify");
+});
+`;
+      }
+      // Node.js: lazy singleton — safe on a persistent long-running server.
       return `import { createMongoAdapter } from "contlify";
 
 let _client: import("mongodb").MongoClient | null = null;
@@ -97,6 +154,7 @@ export const contlifyAdapter = createMongoAdapter(async () => {
   // Dynamic import prevents webpack from analyzing mongodb at build time
   const { MongoClient } = await import("mongodb");
   if (!_client) _client = new MongoClient(uri);
+  await _client.connect().catch(() => {});
   return _client.db(process.env.MONGODB_DB_NAME ?? "contlify");
 });
 `;
@@ -106,19 +164,25 @@ export const contlifyAdapter = createMongoAdapter(async () => {
 /**
  * Returns a .env.local snippet with the relevant DB env vars for the chosen database.
  */
-function buildEnvSnippet(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string {
+function buildEnvSnippet(
+  dbType: SupportedDatabaseType,
+  pgTarget: "node" | "cloudflare" = "node",
+  mongoTarget: "node" | "cloudflare" = "node"
+): string {
   switch (dbType) {
     case "postgres":
       if (pgTarget === "cloudflare") {
         return `# .env.local
-DATABASE_URL=postgresql://user:password@ep-something.neon.tech/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@ep-something-pooler.neon.tech/dbname?sslmode=require
 
 # Contlify API Key (set in your CMS dashboard)
 CONTLIFY_API_KEY=your_api_key_here
 
-# ⚠️ For Cloudflare Workers / OpenNext deployment, set secret via Wrangler:
+# ⚠️ For Cloudflare Workers / OpenNext deployment, set secrets via Wrangler:
 # npx wrangler secret put DATABASE_URL
 # npx wrangler secret put CONTLIFY_API_KEY
+#
+# Use the pooler connection string (hostname contains -pooler) for Workers.
 `;
       }
       return `# .env.local
@@ -145,6 +209,21 @@ CONTLIFY_API_KEY=your_api_key_here
 CONTLIFY_API_KEY=your_api_key_here
 `;
     case "mongodb":
+      if (mongoTarget === "cloudflare") {
+        return `# .env.local
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net
+MONGODB_DB_NAME=contlify
+
+CONTLIFY_API_KEY=your_api_key_here
+
+# ⚠️ For Cloudflare Workers / OpenNext deployment, set secrets via Wrangler:
+# npx wrangler secret put MONGODB_URI
+# npx wrangler secret put CONTLIFY_API_KEY
+#
+# Note: MongoDB on Cloudflare Workers connects per-request (no persistent pool).
+# Consider Cloudflare D1 or Neon PostgreSQL for lower-latency Workers support.
+`;
+      }
       return `# .env.local
 MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net
 MONGODB_DB_NAME=contlify
@@ -157,12 +236,16 @@ CONTLIFY_API_KEY=your_api_key_here
 /**
  * Returns the npm package to install for the chosen database.
  */
-function getDbPackage(dbType: SupportedDatabaseType, pgTarget: "node" | "cloudflare" = "node"): string | null {
+function getDbPackage(
+  dbType: SupportedDatabaseType,
+  pgTarget: "node" | "cloudflare" = "node",
+  _mongoTarget: "node" | "cloudflare" = "node"
+): string | null {
   switch (dbType) {
     case "postgres": return pgTarget === "cloudflare" ? "@neondatabase/serverless" : "pg @types/pg";
     case "supabase": return "@supabase/supabase-js";
     case "d1": return null; // bundled with Cloudflare Workers
-    case "mongodb": return "mongodb";
+    case "mongodb": return "mongodb"; // same package for both node and cloudflare
   }
 }
 
@@ -246,14 +329,33 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     ]);
   }
 
+  let mongoTarget: "node" | "cloudflare" = "node";
+  if (dbType === "mongodb") {
+    mongoTarget = await select("  Where is your project hosted / deployed?", [
+      { label: "Node.js / Vercel / Railway / Render / Docker", value: "node" },
+      { label: "Cloudflare Workers / OpenNext", value: "cloudflare" },
+    ]);
+    if (mongoTarget === "cloudflare") {
+      log("");
+      warn("  ⚠️  MongoDB on Cloudflare Workers connects per-request (no persistent pool).");
+      warn("     Consider Cloudflare D1 or Neon PostgreSQL for better Workers performance.");
+      log("");
+    }
+  }
+
   const baseDir = detectBaseDir(projectRoot);
   const prefix = (rel: string) => baseDir ? `${baseDir}/${rel}` : rel;
 
   // Step 2: Confirm scaffold
   log("");
   info(`  ℹ️  The following files will be generated in your project:`);
+  const dbLabel = dbType === "postgres"
+    ? `postgres - ${pgTarget}`
+    : dbType === "mongodb"
+      ? `mongodb - ${mongoTarget}`
+      : dbType;
   log(`     ${dim(prefix("app/api/contlify/[...path]/route.ts"))} — API route handler`);
-  log(`     ${dim(prefix("lib/contlify/adapter.ts"))}             — Database adapter (${dbType}${dbType === "postgres" ? ` - ${pgTarget}` : ""})`);
+  log(`     ${dim(prefix("lib/contlify/adapter.ts"))}             — Database adapter (${dbLabel})`);
   log(`     ${dim(prefix("lib/contlify/queries.ts"))}             — Blog read queries`);
   log(`     ${dim(prefix("app/blog/loading.tsx"))}               — Loading spinner component`);
   log(`     ${dim(prefix("app/blog/page.tsx"))}                   — Blog categories page`);
@@ -268,7 +370,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   }
 
   // Step 3: Install the required database driver
-  const dbPkg = getDbPackage(dbType, pgTarget);
+  const dbPkg = getDbPackage(dbType, pgTarget, mongoTarget);
   if (dbPkg) {
     log("");
     info(`  📦 Installing ${dbPkg}...`);
@@ -288,7 +390,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
 
   // Override adapter.ts with the DB-specific content
   const adapterPath = path.join(projectRoot, prefix("lib/contlify/adapter.ts"));
-  const adapterContent = buildAdapterContent(dbType, pgTarget);
+  const adapterContent = buildAdapterContent(dbType, pgTarget, mongoTarget);
   fs.writeFileSync(adapterPath, adapterContent, "utf-8");
 
   log(formatScaffoldResults(results));
@@ -317,7 +419,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("");
   info("  🔑 Add these to your .env.local:");
   log("");
-  log(buildEnvSnippet(dbType, pgTarget).split("\n").map(l => `  ${dim(l)}`).join("\n"));
+  log(buildEnvSnippet(dbType, pgTarget, mongoTarget).split("\n").map(l => `  ${dim(l)}`).join("\n"));
 
   // Done!
   log("");
