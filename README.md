@@ -1,9 +1,9 @@
 # contlify
 
 > Standardized Blog Publishing Engine & Database Adapter API Framework for Next.js Websites.
-
+<!-- 
 [![npm version](https://img.shields.io/npm/v/contlify.svg?style=flat-square)](https://www.npmjs.com/package/contlify)
-[![license](https://img.shields.io/npm/l/contlify.svg?style=flat-square)](./LICENSE)
+[![license](https://img.shields.io/npm/l/contlify.svg?style=flat-square)](./LICENSE) -->
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
 
 `contlify` is a database-agnostic TypeScript publishing middleware and adapter engine. It enables any publisher service (Postman, n8n, CMS dashboards, or custom backends) to publish, update, and manage blog posts on your Next.js site through standardized Web APIs.
