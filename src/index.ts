@@ -114,24 +114,7 @@ export type {
   PaginatedPostsResult,
 } from "./queries/index.js";
 
-// Template System (Blog Page Scaffolding)
-export {
-  getBlogListingTemplate,
-  getBlogPostTemplate,
-  getQueriesTemplate,
-  getAdapterConfigTemplate,
-  getApiRouteTemplate,
-  getScaffoldManifest,
-  type ScaffoldFileEntry,
-} from "./templates/index.js";
-
-// CLI & Scaffolder
-export {
-  scaffoldProject,
-  formatScaffoldResults,
-  type ScaffoldFileResult,
-  type ScaffoldOptions,
-} from "./cli/index.js";
+export type { ContlifyFramework } from "./templates/framework.js";
 
 // Pre-Built Database Adapters (Phase 2)
 export {

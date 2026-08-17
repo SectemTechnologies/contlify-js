@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getScaffoldManifest, type ScaffoldFileEntry } from "../templates/index.js";
+import type { ContlifyFramework } from "../templates/framework.js";
 
 /**
  * Result of scaffolding a single file.
@@ -22,11 +23,14 @@ export interface ScaffoldOptions {
   overwrite?: boolean;
   /** If provided, only scaffold files whose relativePath matches one of these entries. */
   only?: string[];
+  /** Target site framework. Defaults to Next.js (existing behaviour). */
+  framework?: ContlifyFramework;
 }
 
 /**
  * Detects whether the user's project uses a `src/` directory layout.
  * Returns `"src"` if `src/app` or `src/` exists, or `""` if not.
+ * Only applied for Next.js; Astro / React Router manifests already include `src/`.
  */
 export function detectBaseDir(projectRoot: string): string {
   const hasSrcApp = fs.existsSync(path.join(projectRoot, "src", "app"));
@@ -35,19 +39,25 @@ export function detectBaseDir(projectRoot: string): string {
 }
 
 /**
+ * Next.js may live under `src/app`; Astro and React Router v4 paths are already final.
+ */
+function resolveTargetPath(framework: ContlifyFramework, projectRoot: string, relativePath: string): string {
+  if (framework !== "nextjs") {
+    return relativePath;
+  }
+  const baseDir = detectBaseDir(projectRoot);
+  return baseDir ? `${baseDir}/${relativePath}` : relativePath;
+}
+
+/**
  * Scaffolds contlify template files into the user's project directory.
  *
  * Creates directories as needed. Skips existing files unless `overwrite` is true.
  * Returns a report of each file's status.
- *
- * @param options Scaffold configuration.
- * @returns Array of results indicating what was created, skipped, or errored.
  */
 export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] {
-  const { projectRoot, overwrite = false, only } = options;
-  const manifest = getScaffoldManifest();
-  const baseDir = detectBaseDir(projectRoot);
-
+  const { projectRoot, overwrite = false, only, framework = "nextjs" } = options;
+  const manifest = getScaffoldManifest(framework);
   const filesToScaffold: ScaffoldFileEntry[] = only
     ? manifest.filter((entry) => only.includes(entry.relativePath))
     : manifest;
@@ -55,12 +65,11 @@ export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] 
   const results: ScaffoldFileResult[] = [];
 
   for (const entry of filesToScaffold) {
-    const targetRelativePath = baseDir ? `${baseDir}/${entry.relativePath}` : entry.relativePath;
+    const targetRelativePath = resolveTargetPath(framework, projectRoot, entry.relativePath);
     const absolutePath = path.join(projectRoot, targetRelativePath);
     const dir = path.dirname(absolutePath);
 
     try {
-      // Check if file already exists
       if (fs.existsSync(absolutePath) && !overwrite) {
         results.push({
           relativePath: targetRelativePath,
@@ -71,10 +80,7 @@ export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] 
         continue;
       }
 
-      // Create directories if they don't exist
       fs.mkdirSync(dir, { recursive: true });
-
-      // Write the template content
       const content = entry.getContent();
       fs.writeFileSync(absolutePath, content, "utf-8");
 

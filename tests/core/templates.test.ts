@@ -130,6 +130,11 @@ describe("Template System", () => {
       expect(template).toContain("export const contlifyAdapter");
     });
 
+    it("should export bindContlifyEnv", () => {
+      const template = getAdapterConfigTemplate();
+      expect(template).toContain("export function bindContlifyEnv");
+    });
+
     it("should implement createPost method", () => {
       const template = getAdapterConfigTemplate();
       expect(template).toContain("async createPost");

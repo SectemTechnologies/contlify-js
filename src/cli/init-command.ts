@@ -4,6 +4,8 @@ import { execSync } from "node:child_process";
 import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "./scaffolder.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
+import type { ContlifyFramework } from "../templates/framework.js";
+import { getScaffoldManifest } from "../templates/index.js";
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -22,6 +24,12 @@ function warn(msg: string) { console.log(`${COLORS.yellow}${msg}${COLORS.reset}`
 function bold(msg: string) { return `${COLORS.bold}${msg}${COLORS.reset}`; }
 function dim(msg: string) { return `${COLORS.dim}${msg}${COLORS.reset}`; }
 
+const FRAMEWORK_CHOICES: { label: string; value: ContlifyFramework }[] = [
+  { label: "Next.js (App Router)", value: "nextjs" },
+  { label: "Astro", value: "astro" },
+  { label: "React Router v4 (Express + SPA)", value: "react-router-v4" },
+];
+
 const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
   { label: "PostgreSQL (pg / Neon / Railway / Vercel Postgres)", value: "postgres" },
   { label: "Supabase", value: "supabase" },
@@ -30,29 +38,44 @@ const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
 ];
 
 /**
- * Generates the adapter.ts content for the chosen database and deployment target.
+ * Astro / React Router pages import bindContlifyEnv. Postgres and similar treat it as a no-op.
+ */
+function withEnvBind(source: string): string {
+  if (source.includes("export function bindContlifyEnv")) return source;
+  return `${source}
+/** Bind Cloudflare request env (D1). No-op for Postgres / Mongo / Supabase. */
+export function bindContlifyEnv(_env?: unknown) {
+  return contlifyAdapter;
+}
+`;
+}
+
+/**
+ * Generates the adapter.ts content for the chosen database, host, and site framework.
  */
 function buildAdapterContent(
   dbType: SupportedDatabaseType,
   pgTarget: "node" | "cloudflare" = "node",
-  mongoTarget: "node" | "cloudflare" = "node"
+  mongoTarget: "node" | "cloudflare" = "node",
+  framework: ContlifyFramework = "nextjs"
 ): string {
+  const supabaseUrlEnv =
+    framework === "nextjs"
+      ? "process.env.NEXT_PUBLIC_SUPABASE_URL"
+      : framework === "astro"
+        ? "(process.env.PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)"
+        : "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL)";
+
+  const skipNextBuildGuard = framework === "nextjs"
+    ? `if (process.env.NEXT_PHASE === "phase-production-build") return null;\n  `
+    : "";
+
   switch (dbType) {
     case "postgres":
       if (pgTarget === "cloudflare") {
-        // neon() uses HTTPS fetch per query — no persistent WebSocket connections.
-        // Pool/Client from @neondatabase/serverless use WebSockets which cannot
-        // outlive a single Cloudflare Worker request, causing query hangs (1101).
-        // Neon's pooler endpoint (DATABASE_URL with -pooler suffix) handles server-side
-        // connection pooling automatically.
-        return `import { neon } from "@neondatabase/serverless";
+        return withEnvBind(`import { neon } from "@neondatabase/serverless";
 import { createPostgresAdapter } from "contlify";
 
-// Use neon() HTTP transport — each query is a fresh HTTPS fetch with no
-// persistent connection. Pool/Client use WebSockets which cannot outlive a
-// single Cloudflare Worker request, causing intermittent query hangs (1101).
-// Neon's pooler endpoint (DATABASE_URL with -pooler suffix) handles server-side
-// connection pooling automatically.
 const _sql = neon(process.env.DATABASE_URL!);
 
 const neonHttpClient = {
@@ -66,69 +89,62 @@ const neonHttpClient = {
 };
 
 export const contlifyAdapter = createPostgresAdapter(neonHttpClient);
-`;
+`);
       }
-      return `import { Pool } from "pg";
+      return withEnvBind(`import { Pool } from "pg";
 import { createPostgresAdapter } from "contlify";
 
-// Initialize your PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // ssl: { rejectUnauthorized: false } // Uncomment for Neon / Railway
 });
 
 export const contlifyAdapter = createPostgresAdapter(pool);
-`;
+`);
 
     case "supabase":
-      // @supabase/supabase-js uses HTTPS fetch internally — safe on all runtimes.
-      return `import { createClient } from "@supabase/supabase-js";
+      return withEnvBind(`import { createClient } from "@supabase/supabase-js";
 import { createSupabaseAdapter } from "contlify";
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role key for server-side writes
+  ${supabaseUrlEnv}!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export const contlifyAdapter = createSupabaseAdapter(supabase as any);
-`;
+`);
 
     case "d1":
-      // D1 is a native Cloudflare Workers binding — no external TCP, always safe.
-      return `import { getCloudflareContext } from "@opennextjs/cloudflare";
+      if (framework === "nextjs") {
+        return withEnvBind(`import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createD1Adapter } from "contlify";
 
-// Auto-detects ANY D1 database binding name from wrangler.jsonc
 export const contlifyAdapter = createD1Adapter(async () => {
   const ctx = await getCloudflareContext();
   return ctx?.env as any;
 });
+`);
+      }
+      return `import { createD1Adapter } from "contlify";
+
+let _boundEnv: unknown = null;
+
+export function bindContlifyEnv(env?: unknown) {
+  if (env !== undefined) _boundEnv = env;
+  return contlifyAdapter;
+}
+
+export const contlifyAdapter = createD1Adapter(async () => _boundEnv as any);
 `;
 
     case "mongodb":
       if (mongoTarget === "cloudflare") {
-        // Cloudflare Workers: MongoClient holds a persistent TCP connection pool
-        // which cannot be reliably reused across Worker invocations. A globally
-        // cached client will go stale and cause query hangs (error 1101).
-        // Connect fresh per request — the Worker's short lifecycle makes this safe.
-        // Consider using Cloudflare D1 or Neon PostgreSQL for better Workers support.
-        return `import { createMongoAdapter } from "contlify";
+        return withEnvBind(`import { createMongoAdapter } from "contlify";
 
 // Cloudflare Workers: connect fresh per request.
-// A cached MongoClient reused across Worker invocations causes stale TCP
-// connections and intermittent query hangs (error 1101). Connecting per
-// request avoids this at the cost of a small latency overhead per cold query.
-//
-// TIP: For better Cloudflare Workers support consider Cloudflare D1 or
-// Neon PostgreSQL with the neon() HTTP driver instead of MongoDB.
 export const contlifyAdapter = createMongoAdapter(async () => {
-  // Skip DB connection during Next.js production build
-  if (process.env.NEXT_PHASE === "phase-production-build") return null;
-
-  const uri = process.env.MONGODB_URI;
+  ${skipNextBuildGuard}const uri = process.env.MONGODB_URI;
   if (!uri) return null;
 
-  // Dynamic import prevents webpack from analyzing mongodb at build time
   const { MongoClient } = await import("mongodb");
   const client = new MongoClient(uri, {
     serverSelectionTimeoutMS: 5000,
@@ -137,27 +153,22 @@ export const contlifyAdapter = createMongoAdapter(async () => {
   await client.connect();
   return client.db(process.env.MONGODB_DB_NAME ?? "contlify");
 });
-`;
+`);
       }
-      // Node.js: lazy singleton — safe on a persistent long-running server.
-      return `import { createMongoAdapter } from "contlify";
+      return withEnvBind(`import { createMongoAdapter } from "contlify";
 
 let _client: import("mongodb").MongoClient | null = null;
 
 export const contlifyAdapter = createMongoAdapter(async () => {
-  // Skip DB connection during Next.js production build
-  if (process.env.NEXT_PHASE === "phase-production-build") return null;
-
-  const uri = process.env.MONGODB_URI;
+  ${skipNextBuildGuard}const uri = process.env.MONGODB_URI;
   if (!uri) return null;
 
-  // Dynamic import prevents webpack from analyzing mongodb at build time
   const { MongoClient } = await import("mongodb");
   if (!_client) _client = new MongoClient(uri);
   await _client.connect().catch(() => {});
   return _client.db(process.env.MONGODB_DB_NAME ?? "contlify");
 });
-`;
+`);
   }
 }
 
@@ -318,8 +329,16 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log(dim("  ──────────────────────────────────────────────"));
   log("");
 
-  // Step 1: Choose database
+  // Step 1: Choose site framework, then database
+  const framework = await select("  Which site framework are you using?", FRAMEWORK_CHOICES);
   const dbType = await select("  Which database are you using?", DB_CHOICES);
+
+  if (framework === "react-router-v4" && dbType === "d1") {
+    log("");
+    warn("  ⚠️  Cloudflare D1 does not run on a classic Express server.");
+    warn("     Prefer PostgreSQL, Supabase, or MongoDB with React Router v4.");
+    log("");
+  }
 
   let pgTarget: "node" | "cloudflare" = "node";
   if (dbType === "postgres") {
@@ -344,23 +363,20 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   }
 
   const baseDir = detectBaseDir(projectRoot);
-  const prefix = (rel: string) => baseDir ? `${baseDir}/${rel}` : rel;
+  const prefix = (rel: string) => (framework === "nextjs" && baseDir ? `${baseDir}/${rel}` : rel);
 
   // Step 2: Confirm scaffold
   log("");
-  info(`  ℹ️  The following files will be generated in your project:`);
+  info(`  ℹ️  The following files will be generated in your ${framework} project:`);
   const dbLabel = dbType === "postgres"
     ? `postgres - ${pgTarget}`
     : dbType === "mongodb"
       ? `mongodb - ${mongoTarget}`
       : dbType;
-  log(`     ${dim(prefix("app/api/contlify/[...path]/route.ts"))} — API route handler`);
-  log(`     ${dim(prefix("lib/contlify/adapter.ts"))}             — Database adapter (${dbLabel})`);
-  log(`     ${dim(prefix("lib/contlify/queries.ts"))}             — Blog read queries`);
-  log(`     ${dim(prefix("app/blog/loading.tsx"))}               — Loading spinner component`);
-  log(`     ${dim(prefix("app/blog/page.tsx"))}                   — Blog categories page`);
-  log(`     ${dim(prefix("app/blog/category/[slug]/page.tsx"))}   — Category posts page`);
-  log(`     ${dim(prefix("app/blog/post/[slug]/page.tsx"))}       — Single post page`);
+  for (const entry of getScaffoldManifest(framework)) {
+    log(`     ${dim(prefix(entry.relativePath))} — ${entry.description}`);
+  }
+  log(`     ${dim("(adapter will be written for " + dbLabel + ")")}`);
   log("");
 
   const shouldProceed = await confirm("  Proceed with setup?", true);
@@ -382,21 +398,39 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     }
   }
 
+  if (framework === "react-router-v4") {
+    const rrPkgs = "express react-router-dom@4";
+    log("");
+    info(`  📦 Installing ${rrPkgs}...`);
+    try {
+      execSync(`npm install ${rrPkgs}`, { cwd: projectRoot, stdio: "inherit" });
+      success(`  ✅ ${rrPkgs} installed.`);
+    } catch {
+      warn(`  ⚠️  Could not auto-install ${rrPkgs}. Run: npm install ${rrPkgs}`);
+    }
+  }
+
   // Step 4: Scaffold files
   log("");
   info("  📁 Scaffolding files...");
 
-  const results = scaffoldProject({ projectRoot, overwrite: flags.overwrite ?? false });
+  const results = scaffoldProject({
+    projectRoot,
+    overwrite: flags.overwrite ?? false,
+    framework,
+  });
 
-  // Override adapter.ts with the DB-specific content
-  const adapterPath = path.join(projectRoot, prefix("lib/contlify/adapter.ts"));
-  const adapterContent = buildAdapterContent(dbType, pgTarget, mongoTarget);
+  const adapterRel =
+    framework === "nextjs" ? prefix("lib/contlify/adapter.ts") : "src/lib/contlify/adapter.ts";
+  const adapterPath = path.join(projectRoot, adapterRel);
+  const adapterContent = buildAdapterContent(dbType, pgTarget, mongoTarget, framework);
+  fs.mkdirSync(path.dirname(adapterPath), { recursive: true });
   fs.writeFileSync(adapterPath, adapterContent, "utf-8");
 
   log(formatScaffoldResults(results));
 
-  // Patch next.config.mjs for packages that need serverExternalPackages
-  if (dbType === "mongodb") {
+  // Patch next.config.mjs only for Next.js + MongoDB
+  if (framework === "nextjs" && dbType === "mongodb") {
     patchNextConfig(projectRoot, "mongodb");
     success("  ✅ next.config.mjs patched with serverExternalPackages.");
   }
@@ -430,7 +464,12 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("  2. Add env variables to .env.local");
   log("  3. Set your CONTLIFY_API_KEY in your Contlify dashboard");
   log("  4. Run: npm run dev");
-  log("  5. Visit /blog to see your blog listing page");
+  if (framework === "react-router-v4") {
+    log("  5. Run Express: npx tsx server/contlify-server.ts");
+    log("  6. Mount <ContlifyBlogRoutes /> inside BrowserRouter and visit /blog");
+  } else {
+    log("  5. Visit /blog to see your blog listing page");
+  }
   log("");
   log(dim("  Docs: https://github.com/SectemTechnologies/Next.js-Package#readme"));
   log("");
