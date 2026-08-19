@@ -3,9 +3,12 @@
  * Astro endpoints already use Web Request/Response, so the handler is passed through.
  */
 export function getAstroApiRouteTemplate(): string {
-  return `import type { APIRoute } from "astro";
+  return `export const prerender = false;
+
+import type { APIRoute } from "astro";
 import { createContlifyHandler } from "contlify";
 import { bindContlifyEnv, contlifyAdapter } from "../../../lib/contlify/adapter";
+
 
 const handler = createContlifyHandler({
   apiKey: import.meta.env.CONTLIFY_API_KEY,
@@ -18,10 +21,15 @@ const handler = createContlifyHandler({
  * Bind Cloudflare/Astro env (D1) when present, then dispatch to Contlify.
  */
 export const ALL: APIRoute = async (context) => {
-  const runtimeEnv = (context.locals as { runtime?: { env?: unknown } })?.runtime?.env;
-  if (runtimeEnv) bindContlifyEnv(runtimeEnv);
+  try {
+    const runtime = (context.locals as any)?.runtime;
+    if (runtime) bindContlifyEnv(runtime.env ?? runtime);
+  } catch {
+    // Astro v6+ removed runtime.env in favor of cloudflare:workers
+  }
   return handler(context.request);
 };
+
 
 export const GET = ALL;
 export const POST = ALL;
@@ -38,14 +46,19 @@ export const HEAD = ALL;
  */
 export function getAstroBlogListingTemplate(): string {
   return `---
+export const prerender = false;
+
 import { bindContlifyEnv } from "../../lib/contlify/adapter";
 import { getCategories } from "../../lib/contlify/queries";
 
-const runtimeEnv = (Astro.locals as { runtime?: { env?: unknown } })?.runtime?.env;
-if (runtimeEnv) bindContlifyEnv(runtimeEnv);
+try {
+  const runtime = (Astro.locals as any)?.runtime;
+  if (runtime) bindContlifyEnv(runtime.env ?? runtime);
+} catch {}
 
 const categories = await getCategories();
 ---
+
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -100,11 +113,15 @@ const categories = await getCategories();
  */
 export function getAstroCategoryPostsTemplate(): string {
   return `---
+export const prerender = false;
+
 import { bindContlifyEnv } from "../../../lib/contlify/adapter";
 import { getPostsByCategory } from "../../../lib/contlify/queries";
 
-const runtimeEnv = (Astro.locals as { runtime?: { env?: unknown } })?.runtime?.env;
-if (runtimeEnv) bindContlifyEnv(runtimeEnv);
+try {
+  const runtime = (Astro.locals as any)?.runtime;
+  if (runtime) bindContlifyEnv(runtime.env ?? runtime);
+} catch {}
 
 const { slug } = Astro.params;
 const posts = slug ? await getPostsByCategory(slug) : [];
@@ -164,11 +181,15 @@ const categoryName = slug ? slug.charAt(0).toUpperCase() + slug.slice(1).replace
  */
 export function getAstroBlogPostTemplate(): string {
   return `---
+export const prerender = false;
+
 import { bindContlifyEnv } from "../../../lib/contlify/adapter";
 import { getPostBySlug } from "../../../lib/contlify/queries";
 
-const runtimeEnv = (Astro.locals as { runtime?: { env?: unknown } })?.runtime?.env;
-if (runtimeEnv) bindContlifyEnv(runtimeEnv);
+try {
+  const runtime = (Astro.locals as any)?.runtime;
+  if (runtime) bindContlifyEnv(runtime.env ?? runtime);
+} catch {}
 
 const { slug } = Astro.params;
 const post = slug ? await getPostBySlug(slug) : null;
@@ -182,6 +203,7 @@ const categorySlug = primaryCategory && typeof primaryCategory !== "string" ? pr
 const categoryName = primaryCategory && typeof primaryCategory !== "string" ? primaryCategory.name : (typeof primaryCategory === "string" ? primaryCategory : null);
 const imageUrl = typeof post.coverImage === "string" ? post.coverImage : (post.coverImage as { url?: string } | undefined)?.url;
 ---
+
 <html lang="en">
   <head>
     <meta charset="utf-8" />

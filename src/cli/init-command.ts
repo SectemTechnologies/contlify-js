@@ -2,10 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "./scaffolder.js";
+import { detectFramework } from "./detector.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
 import type { ContlifyFramework } from "../templates/framework.js";
 import { getScaffoldManifest } from "../templates/index.js";
+
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -329,9 +331,28 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log(dim("  ──────────────────────────────────────────────"));
   log("");
 
-  // Step 1: Choose site framework, then database
-  const framework = await select("  Which site framework are you using?", FRAMEWORK_CHOICES);
+  // Step 1: Detect or select site framework
+  const detected = detectFramework(projectRoot);
+  let framework: ContlifyFramework;
+
+  if (detected) {
+    const matched = FRAMEWORK_CHOICES.find((f) => f.value === detected);
+    const label = matched ? matched.label : detected;
+    const confirmDetected = await confirm(
+      `  🔍 Detected ${bold(label)}. Proceed with this framework?`,
+      true
+    );
+    if (confirmDetected) {
+      framework = detected;
+    } else {
+      framework = await select("  Which site framework are you using?", FRAMEWORK_CHOICES);
+    }
+  } else {
+    framework = await select("  Which site framework are you using?", FRAMEWORK_CHOICES);
+  }
+
   const dbType = await select("  Which database are you using?", DB_CHOICES);
+
 
   if (framework === "react-router-v4" && dbType === "d1") {
     log("");
