@@ -19,6 +19,16 @@ export { handleGetAuthors } from "./core/authors-handler.js";
 export { handleGetCategories } from "./core/categories-handler.js";
 export { handleGetTags } from "./core/tags-handler.js";
 
+// Node.js / Express Middleware Bridge (Express, Angular SSR, Fastify)
+export {
+  createNodeMiddleware,
+  nodeRequestToWebRequest,
+  writeWebResponseToNode,
+  type NodeLikeRequest,
+  type NodeMiddleware,
+} from "./node/index.js";
+
+
 // Configuration System
 export type {
   ContlifyConfig,

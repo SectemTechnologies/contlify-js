@@ -29,7 +29,7 @@ function dim(msg: string) { return `${COLORS.dim}${msg}${COLORS.reset}`; }
 const FRAMEWORK_CHOICES: { label: string; value: ContlifyFramework }[] = [
   { label: "Next.js (App Router)", value: "nextjs" },
   { label: "Astro", value: "astro" },
-  { label: "React Router v4 (Express + SPA)", value: "react-router-v4" },
+  { label: "React Router v7 (Framework Mode)", value: "react-router" },
 ];
 
 const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
@@ -63,10 +63,11 @@ function buildAdapterContent(
 ): string {
   const supabaseUrlEnv =
     framework === "nextjs"
-      ? "process.env.NEXT_PUBLIC_SUPABASE_URL"
+      ? "process.env.SUPABASE_URL"
       : framework === "astro"
-        ? "(process.env.PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)"
-        : "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL)";
+        ? "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL)"
+        : "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL)";
+
 
   const skipNextBuildGuard = framework === "nextjs"
     ? `if (process.env.NEXT_PHASE === "phase-production-build") return null;\n  `
@@ -109,7 +110,7 @@ import { createSupabaseAdapter } from "contlify";
 
 const supabase = createClient(
   ${supabaseUrlEnv}!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SECRET_KEY!
 );
 
 export const contlifyAdapter = createSupabaseAdapter(supabase as any);
@@ -206,8 +207,8 @@ CONTLIFY_API_KEY=your_api_key_here
 `;
     case "supabase":
       return `# .env.local
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your_service_role_key_here
 
 CONTLIFY_API_KEY=your_api_key_here
 `;
@@ -290,8 +291,70 @@ function patchNextConfig(projectRoot: string, pkg: string): void {
 }
 
 /**
+ * Patches app/routes.ts in React Router v7 to register Contlify blog and API routes.
+ */
+function patchReactRouterRoutes(projectRoot: string): boolean {
+  const routesPaths = [
+    path.join(projectRoot, "app", "routes.ts"),
+    path.join(projectRoot, "app", "routes.js"),
+    path.join(projectRoot, "app", "routes.tsx"),
+  ];
+
+  const routesPath = routesPaths.find((p) => fs.existsSync(p));
+  if (!routesPath) return false;
+
+  let content = fs.readFileSync(routesPath, "utf-8");
+
+  const missingRoutes: string[] = [];
+
+  if (!content.includes("routes/blog._index.tsx")) {
+    missingRoutes.push('  route("blog", "routes/blog._index.tsx"),');
+  }
+  if (!content.includes("routes/blog.category.$slug.tsx")) {
+    missingRoutes.push('  route("blog/category/:slug", "routes/blog.category.$slug.tsx"),');
+  }
+  if (!content.includes("routes/blog.post.$slug.tsx")) {
+    missingRoutes.push('  route("blog/post/:slug", "routes/blog.post.$slug.tsx"),');
+  }
+  if (!content.includes("routes/api.contlify.$.ts") && !content.includes("api.contlify")) {
+    missingRoutes.push('  route("api/contlify/*", "routes/api.contlify.$.ts"),');
+  }
+
+  // All 4 routes are already present
+  if (missingRoutes.length === 0) {
+    return true;
+  }
+
+  // Ensure 'route' is imported from @react-router/dev/routes
+  if (!content.includes("route,") && !content.includes(", route") && !content.includes("route }") && !content.includes("route\n}")) {
+    content = content.replace(
+      /import\s*\{\s*([^}]+)\s*\}\s*from\s*["']@react-router\/dev\/routes["']/,
+      (_match, imports) => `import { ${imports.trim()}, route } from "@react-router/dev/routes"`
+    );
+  }
+
+  const routesToInsert = "\n" + missingRoutes.join("\n") + "\n";
+
+  // Insert before the closing array bracket
+  if (content.includes("] satisfies RouteConfig")) {
+    content = content.replace(
+      /(\s*)\]\s*satisfies\s*RouteConfig/,
+      `${routesToInsert}$1] satisfies RouteConfig`
+    );
+  } else if (content.lastIndexOf("]") !== -1) {
+    const lastBracketIndex = content.lastIndexOf("]");
+    content = content.slice(0, lastBracketIndex) + routesToInsert + content.slice(lastBracketIndex);
+  }
+
+  fs.writeFileSync(routesPath, content, "utf-8");
+  return true;
+}
+
+
+/**
  * Returns CLI migration instructions for the chosen database type.
  */
+
 function getMigrationInstructions(dbType: SupportedDatabaseType, sqlFilePath: string): string {
   switch (dbType) {
     case "postgres":
@@ -353,15 +416,8 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
 
   const dbType = await select("  Which database are you using?", DB_CHOICES);
 
-
-  if (framework === "react-router-v4" && dbType === "d1") {
-    log("");
-    warn("  ⚠️  Cloudflare D1 does not run on a classic Express server.");
-    warn("     Prefer PostgreSQL, Supabase, or MongoDB with React Router v4.");
-    log("");
-  }
-
   let pgTarget: "node" | "cloudflare" = "node";
+
   if (dbType === "postgres") {
     pgTarget = await select("  Where is your project hosted / deployed?", [
       { label: "Node.js / Vercel / Railway / Render / Docker (Standard pg)", value: "node" },
@@ -419,18 +475,6 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     }
   }
 
-  if (framework === "react-router-v4") {
-    const rrPkgs = "express react-router-dom@4";
-    log("");
-    info(`  📦 Installing ${rrPkgs}...`);
-    try {
-      execSync(`npm install ${rrPkgs}`, { cwd: projectRoot, stdio: "inherit" });
-      success(`  ✅ ${rrPkgs} installed.`);
-    } catch {
-      warn(`  ⚠️  Could not auto-install ${rrPkgs}. Run: npm install ${rrPkgs}`);
-    }
-  }
-
   // Step 4: Scaffold files
   log("");
   info("  📁 Scaffolding files...");
@@ -442,7 +486,11 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   });
 
   const adapterRel =
-    framework === "nextjs" ? prefix("lib/contlify/adapter.ts") : "src/lib/contlify/adapter.ts";
+    framework === "nextjs"
+      ? prefix("lib/contlify/adapter.ts")
+      : framework === "react-router"
+        ? "app/lib/contlify/adapter.ts"
+        : "src/lib/contlify/adapter.ts";
   const adapterPath = path.join(projectRoot, adapterRel);
   const adapterContent = buildAdapterContent(dbType, pgTarget, mongoTarget, framework);
   fs.mkdirSync(path.dirname(adapterPath), { recursive: true });
@@ -455,6 +503,15 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     patchNextConfig(projectRoot, "mongodb");
     success("  ✅ next.config.mjs patched with serverExternalPackages.");
   }
+
+  // Patch app/routes.ts for React Router v7
+  if (framework === "react-router") {
+    const patched = patchReactRouterRoutes(projectRoot);
+    if (patched) {
+      success("  ✅ app/routes.ts registered with blog and Contlify API routes.");
+    }
+  }
+
 
   // Step 5: Write migration SQL file
   log("");
@@ -485,12 +542,8 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("  2. Add env variables to .env.local");
   log("  3. Set your CONTLIFY_API_KEY in your Contlify dashboard");
   log("  4. Run: npm run dev");
-  if (framework === "react-router-v4") {
-    log("  5. Run Express: npx tsx server/contlify-server.ts");
-    log("  6. Mount <ContlifyBlogRoutes /> inside BrowserRouter and visit /blog");
-  } else {
-    log("  5. Visit /blog to see your blog listing page");
-  }
+  log("  5. Visit /blog to see your blog listing page");
+
   log("");
   log(dim("  Docs: https://github.com/SectemTechnologies/Next.js-Package#readme"));
   log("");

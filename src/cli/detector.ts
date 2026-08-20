@@ -7,7 +7,7 @@ import type { ContlifyFramework } from "../templates/framework.js";
  * Checks configuration files, package.json dependencies, and directory structures.
  *
  * @param projectRoot Absolute path to the user's project root directory.
- * @returns Detected framework ("nextjs" | "astro" | "react-router-v4") or null if unrecognized.
+ * @returns Detected framework ("nextjs" | "astro" | "react-router") or null if unrecognized.
  */
 export function detectFramework(projectRoot: string): ContlifyFramework | null {
   // 1. Check for Astro configuration files
@@ -23,7 +23,19 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 2. Check for Next.js configuration files
+  // 2. Check for React Router v7 configuration files
+  const reactRouterConfigFiles = [
+    "react-router.config.ts",
+    "react-router.config.js",
+    "react-router.config.mjs",
+  ];
+  for (const file of reactRouterConfigFiles) {
+    if (fs.existsSync(path.join(projectRoot, file))) {
+      return "react-router";
+    }
+  }
+
+  // 3. Check for Next.js configuration files
   const nextConfigFiles = [
     "next.config.js",
     "next.config.mjs",
@@ -35,7 +47,7 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 3. Inspect package.json dependencies and devDependencies
+  // 4. Inspect package.json dependencies and devDependencies
   const pkgPath = path.join(projectRoot, "package.json");
   if (fs.existsSync(pkgPath)) {
     try {
@@ -49,23 +61,25 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
       if ("astro" in allDeps) {
         return "astro";
       }
+      if ("@react-router/dev" in allDeps || "@react-router/node" in allDeps || "@react-router/serve" in allDeps) {
+        return "react-router";
+      }
       if ("next" in allDeps) {
         return "nextjs";
       }
       if ("react-router" in allDeps || "react-router-dom" in allDeps) {
-        return "react-router-v4";
+        return "react-router";
       }
     } catch {
       // Ignore JSON parse errors
     }
   }
 
-  // 4. Fallback: inspect directory structures
+  // 5. Fallback: inspect directory structures
   if (
     fs.existsSync(path.join(projectRoot, "src", "app")) ||
     fs.existsSync(path.join(projectRoot, "app"))
   ) {
-    // Check if app/ layout has Next.js conventions
     return "nextjs";
   }
 

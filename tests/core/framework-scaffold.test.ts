@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { scaffoldProject } from "../../src/cli/scaffolder.js";
-import { getAstroScaffoldManifest, getReactRouterV4ScaffoldManifest, getScaffoldManifest } from "../../src/templates/index.js";
+import { getAstroScaffoldManifest, getReactRouterScaffoldManifest, getScaffoldManifest } from "../../src/templates/index.js";
 
 describe("Framework scaffold packs", () => {
   let tempDir: string;
@@ -34,18 +34,23 @@ describe("Framework scaffold packs", () => {
     expect(api).toContain("createContlifyHandler");
   });
 
-  it("scaffolds React Router v4 pages plus Express server", () => {
-    const results = scaffoldProject({ projectRoot: tempDir, framework: "react-router-v4" });
-    expect(results.filter((r) => r.status === "created")).toHaveLength(getReactRouterV4ScaffoldManifest().length);
-    expect(fs.existsSync(path.join(tempDir, "server/contlify-server.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "src/pages/BlogCategories.jsx"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "src/contlify-blog-routes.jsx"))).toBe(true);
+  it("scaffolds React Router v7 routes with server loaders and actions", () => {
+    const results = scaffoldProject({ projectRoot: tempDir, framework: "react-router" });
+    expect(results.filter((r) => r.status === "created")).toHaveLength(getReactRouterScaffoldManifest().length);
+    expect(fs.existsSync(path.join(tempDir, "app/routes/api.contlify.$.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/routes/blog._index.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/routes/blog.category.$slug.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/routes/blog.post.$slug.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/lib/contlify/adapter.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/lib/contlify/queries.ts"))).toBe(true);
 
-    const server = fs.readFileSync(path.join(tempDir, "server/contlify-server.ts"), "utf-8");
-    expect(server).toContain("createNodeMiddleware");
-    expect(server).toContain("/api/blog/categories");
+    const api = fs.readFileSync(path.join(tempDir, "app/routes/api.contlify.$.ts"), "utf-8");
+    expect(api).toContain("export const loader");
+    expect(api).toContain("export const action");
+    expect(api).toContain("createContlifyHandler");
 
-    const routes = fs.readFileSync(path.join(tempDir, "src/contlify-blog-routes.jsx"), "utf-8");
-    expect(routes).toContain('exact path="/blog"');
+    const listing = fs.readFileSync(path.join(tempDir, "app/routes/blog._index.tsx"), "utf-8");
+    expect(listing).toContain("export async function loader");
+    expect(listing).toContain("useLoaderData");
   });
 });

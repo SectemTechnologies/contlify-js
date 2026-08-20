@@ -24,6 +24,11 @@ describe("Framework Auto-Detector (detectFramework)", () => {
     expect(detectFramework(tempDir)).toBe("astro");
   });
 
+  it("should detect React Router v7 when react-router.config.ts exists", () => {
+    fs.writeFileSync(path.join(tempDir, "react-router.config.ts"), "export default {};");
+    expect(detectFramework(tempDir)).toBe("react-router");
+  });
+
   it("should detect Next.js when next.config.js exists", () => {
     fs.writeFileSync(path.join(tempDir, "next.config.js"), "module.exports = {};");
     expect(detectFramework(tempDir)).toBe("nextjs");
@@ -37,7 +42,7 @@ describe("Framework Auto-Detector (detectFramework)", () => {
   it("should detect Astro via package.json dependencies", () => {
     fs.writeFileSync(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { astro: "^4.0.0" } })
+      JSON.stringify({ dependencies: { astro: "^5.0.0" } })
     );
     expect(detectFramework(tempDir)).toBe("astro");
   });
@@ -45,17 +50,25 @@ describe("Framework Auto-Detector (detectFramework)", () => {
   it("should detect Next.js via package.json dependencies", () => {
     fs.writeFileSync(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { next: "^14.0.0", react: "^18.0.0" } })
+      JSON.stringify({ dependencies: { next: "^15.0.0", react: "^19.0.0" } })
     );
     expect(detectFramework(tempDir)).toBe("nextjs");
   });
 
-  it("should detect React Router v4 via package.json dependencies", () => {
+  it("should detect React Router v7 via package.json dependencies", () => {
     fs.writeFileSync(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { "react-router-dom": "^4.3.1" } })
+      JSON.stringify({ dependencies: { "react-router": "^7.0.0" } })
     );
-    expect(detectFramework(tempDir)).toBe("react-router-v4");
+    expect(detectFramework(tempDir)).toBe("react-router");
+  });
+
+  it("should detect React Router v7 via @react-router/dev in devDependencies", () => {
+    fs.writeFileSync(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ devDependencies: { "@react-router/dev": "^7.0.0" } })
+    );
+    expect(detectFramework(tempDir)).toBe("react-router");
   });
 
   it("should detect Next.js when src/app layout exists without configs", () => {
