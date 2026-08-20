@@ -5,12 +5,16 @@ import * as os from "node:os";
 import { getMigrationSql } from "../../src/migrations/index.js";
 import { scaffoldProject } from "../../src/cli/scaffolder.js";
 
-// Mock the prompts module for all tests
+// Mock prompts and skip npm install in tests
 vi.mock("../../src/cli/prompts.js", () => ({
   prompt: vi.fn(),
   promptWithDefault: vi.fn(),
   select: vi.fn(),
   confirm: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn(),
 }));
 
 import { runInit } from "../../src/cli/init-command.js";
@@ -33,7 +37,7 @@ describe("CLI Commands (Phase 3)", () => {
 
   describe("runInit", () => {
     it("should scaffold all files when user selects postgres and confirms", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -49,7 +53,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for postgres (node)", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -61,7 +65,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for postgres (cloudflare / neon edge)", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("cloudflare");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("cloudflare");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -73,7 +77,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for supabase", async () => {
-      vi.mocked(select).mockResolvedValueOnce("supabase");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("supabase");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -84,7 +88,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for d1", async () => {
-      vi.mocked(select).mockResolvedValueOnce("d1");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("d1");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -95,7 +99,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for mongodb (node)", async () => {
-      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -106,7 +110,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write DB-specific adapter content for mongodb (cloudflare)", async () => {
-      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("cloudflare");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("mongodb").mockResolvedValueOnce("cloudflare");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -118,7 +122,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write migration SQL file for postgres", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -130,7 +134,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should write migration SQL file for d1", async () => {
-      vi.mocked(select).mockResolvedValueOnce("d1");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("d1");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -140,7 +144,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should NOT write SQL file for mongodb", async () => {
-      vi.mocked(select).mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("mongodb").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(true);
 
       await runInit(tempDir);
@@ -149,7 +153,7 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should cancel setup without creating files when user denies", async () => {
-      vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       await runInit(tempDir);
@@ -158,12 +162,13 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should skip existing files without overwrite flag", async () => {
-      // Pre-create one file
+      // Pre-create one file (triggers Next.js auto-detection via app/ directory)
       fs.mkdirSync(path.join(tempDir, "app/blog"), { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app/blog/page.tsx"), "// existing", "utf-8");
 
+      vi.mocked(confirm).mockResolvedValueOnce(true); // confirm detected Next.js
       vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
-      vi.mocked(confirm).mockResolvedValueOnce(true);
+      vi.mocked(confirm).mockResolvedValueOnce(true); // proceed with setup
 
       await runInit(tempDir, { overwrite: false });
 
@@ -173,12 +178,13 @@ describe("CLI Commands (Phase 3)", () => {
     });
 
     it("should overwrite existing files with overwrite flag", async () => {
-      // Pre-create one file
+      // Pre-create one file (triggers Next.js auto-detection via app/ directory)
       fs.mkdirSync(path.join(tempDir, "app/blog"), { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app/blog/page.tsx"), "// existing", "utf-8");
 
+      vi.mocked(confirm).mockResolvedValueOnce(true); // confirm detected Next.js
       vi.mocked(select).mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
-      vi.mocked(confirm).mockResolvedValueOnce(true);
+      vi.mocked(confirm).mockResolvedValueOnce(true); // proceed with setup
 
       await runInit(tempDir, { overwrite: true });
 
@@ -187,7 +193,35 @@ describe("CLI Commands (Phase 3)", () => {
       expect(content).not.toBe("// existing");
       expect(content.length).toBeGreaterThan(10);
     });
+
+
+    it("should prompt to confirm detected framework when astro.config.mjs exists", async () => {
+      fs.writeFileSync(path.join(tempDir, "astro.config.mjs"), "export default {};");
+
+      // confirm detected framework -> select db -> confirm scaffold
+      vi.mocked(confirm).mockResolvedValueOnce(true); // confirm detected Astro
+      vi.mocked(select).mockResolvedValueOnce("supabase"); // select Supabase
+      vi.mocked(confirm).mockResolvedValueOnce(true); // proceed with scaffold
+
+      await runInit(tempDir);
+
+      expect(fs.existsSync(path.join(tempDir, "src/pages/blog/index.astro"))).toBe(true);
+    });
+
+    it("should allow changing framework if user declines detected framework", async () => {
+      fs.writeFileSync(path.join(tempDir, "astro.config.mjs"), "export default {};");
+
+      // decline detected Astro -> select nextjs -> select db -> select host -> confirm scaffold
+      vi.mocked(confirm).mockResolvedValueOnce(false); // decline detected Astro
+      vi.mocked(select).mockResolvedValueOnce("nextjs").mockResolvedValueOnce("postgres").mockResolvedValueOnce("node");
+      vi.mocked(confirm).mockResolvedValueOnce(true); // proceed with scaffold
+
+      await runInit(tempDir);
+
+      expect(fs.existsSync(path.join(tempDir, "app/blog/page.tsx"))).toBe(true);
+    });
   });
+
 
   describe("runMigrate", () => {
     it("should write postgres migration SQL file", async () => {

@@ -19,6 +19,16 @@ export { handleGetAuthors } from "./core/authors-handler.js";
 export { handleGetCategories } from "./core/categories-handler.js";
 export { handleGetTags } from "./core/tags-handler.js";
 
+// Node.js / Express Middleware Bridge (Express, Angular SSR, Fastify)
+export {
+  createNodeMiddleware,
+  nodeRequestToWebRequest,
+  writeWebResponseToNode,
+  type NodeLikeRequest,
+  type NodeMiddleware,
+} from "./node/index.js";
+
+
 // Configuration System
 export type {
   ContlifyConfig,
@@ -114,24 +124,7 @@ export type {
   PaginatedPostsResult,
 } from "./queries/index.js";
 
-// Template System (Blog Page Scaffolding)
-export {
-  getBlogListingTemplate,
-  getBlogPostTemplate,
-  getQueriesTemplate,
-  getAdapterConfigTemplate,
-  getApiRouteTemplate,
-  getScaffoldManifest,
-  type ScaffoldFileEntry,
-} from "./templates/index.js";
-
-// CLI & Scaffolder
-export {
-  scaffoldProject,
-  formatScaffoldResults,
-  type ScaffoldFileResult,
-  type ScaffoldOptions,
-} from "./cli/index.js";
+export type { ContlifyFramework } from "./templates/framework.js";
 
 // Pre-Built Database Adapters (Phase 2)
 export {

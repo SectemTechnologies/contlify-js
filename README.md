@@ -13,7 +13,7 @@
 ## 🌟 Key Features
 
 - **Built-in Storage Adapters**: Pre-built adapters for **PostgreSQL** (`pg` & `@neondatabase/serverless`), **Supabase**, **Cloudflare D1**, and **MongoDB**.
-- **Interactive CLI Wizard (`npx contlify init`)**: Automatically detects whether your Next.js app uses `src/` (`src/app`, `src/lib`) or root level layout and scaffolds ready-to-use blog pages.
+- **Interactive CLI Wizard (`npx contlify init`)**: **Next.js**, **Astro**, or **React Router v7**. Detects `src/` for Next.js and scaffolds ready-to-use blog pages.
 - **Flexible Payload Normalization**: Accepts simple string inputs (`"author": "Rauf"`, `"categories": ["Technology", "Design"]`) OR full object arrays (`[{ name: "Technology", slug: "technology" }]`).
 - **Dynamic Category Cover Images**: Categories automatically inherit the cover image of the latest published post in that category without requiring database migrations.
 - **Category-First Next.js App Router Pages**: Generates `/blog` (Categories grid), `/blog/category/[slug]` (Filtered articles), and `/blog/post/[slug]` (Article detail).
@@ -25,21 +25,29 @@
 ## 🚀 CLI Commands
 
 ### 1. Interactive Project Setup (`init`)
-Scaffolds ready-to-use blog pages, queries, and database adapter configuration in your Next.js project:
+Scaffolds ready-to-use blog pages, queries, and database adapter configuration:
 
 ```bash
 npx contlify init
 ```
 
-* **Smart `src/` Layout Detection**:
-  - If your project has `src/app/`, files are scaffolded into `src/app/` and `src/lib/`.
-  - If not, files are scaffolded into root `app/` and `lib/`.
-  - Reuses existing project folders without overwriting user files.
+The wizard auto-detects your framework or prompts for choice:
 
-* **Overwrite Flag**:
-  ```bash
-  npx contlify init --overwrite
-  ```
+| Framework | What gets generated |
+| :--- | :--- |
+| **Next.js** | `app/api/contlify/[...path]/route.ts` + `/blog` App Router pages |
+| **Astro** | `src/pages/api/contlify/[...path].ts` + `src/pages/blog/*.astro` |
+| **React Router v7** | `app/routes/api.contlify.$.ts` + `app/routes/blog.*.tsx` (server loaders & actions) |
+
+* Next.js detects `src/app` vs `app/`.
+* Astro writes into `src/pages/` and `src/lib/`.
+* React Router v7 writes into `app/routes/` and `app/lib/`.
+* Use `--overwrite` to replace existing files.
+
+
+```bash
+npx contlify init --overwrite
+```
 
 ### 2. Migration SQL Generator (`migrate`)
 Generates database migration SQL files (`contlify-postgres.sql`, `contlify-d1.sql`, `contlify-supabase.sql`):
