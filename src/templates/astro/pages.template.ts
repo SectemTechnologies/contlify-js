@@ -176,9 +176,6 @@ const categoryName = (typeof matchedCat === "object" ? matchedCat?.name : matche
                       <a href={'/blog/post/' + post.slug} style="display: inline-flex; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 6px; text-decoration: none;">
                         Read Article →
                       </a>
-
-
-
                     </div>
                   </div>
 
