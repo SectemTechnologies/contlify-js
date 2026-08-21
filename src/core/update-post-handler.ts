@@ -41,14 +41,13 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
   // Optimize content images if updated content string was provided
   const content = typeof payload.content === "string" ? optimizeContentImages(payload.content) : undefined;
 
-  // 3. Re-calculate slug and URL if title or custom_slug were provided
+  // 3. Re-calculate slug and URL only if custom_slug or slug is explicitly provided
   let slug: string | undefined = undefined;
   const rawSlug = payload.custom_slug ?? payload.slug;
   if (typeof rawSlug === "string" && rawSlug.trim() !== "") {
-    slug = rawSlug.trim();
-  } else if (payload.title) {
-    slug = slugify(payload.title);
+    slug = slugify(rawSlug.trim());
   }
+
 
   let postUrl: string | undefined = undefined;
   if (slug) {
