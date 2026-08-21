@@ -158,7 +158,7 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
         postId: id, slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "created",
-        url: `/blog/${slug}`,
+        url: `/blog/post/${slug}`,
       };
     },
 
@@ -184,9 +184,10 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
         postId: idOrSlug, slug: newSlug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "updated",
-        url: `/blog/${newSlug}`,
+        url: `/blog/post/${newSlug}`,
       };
     },
+
 
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
       let q = client.from("contlify_posts").select("*");
@@ -283,9 +284,30 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
       );
     },
 
+    async updateCategory(
+      idOrSlug: string,
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+    ): Promise<Category> {
+      const updateData: Record<string, unknown> = {};
+      if (payload.name !== undefined) updateData.name = payload.name;
+      if (payload.slug !== undefined) updateData.slug = payload.slug;
+      if (payload.description !== undefined) updateData.description = payload.description;
+
+      let query = client.from("contlify_categories").update(updateData);
+      // Check if idOrSlug looks like a UUID or numeric ID, or match on both
+      query = query.or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`).select("*");
+
+      const rows = await queryAll<RawCategoryRow>(query);
+      if (!rows[0]) {
+        throw new Error(`Category not found: ${idOrSlug}`);
+      }
+      return mapRowToCategory(rows[0]);
+    },
+
     async getTags(): Promise<Tag[]> {
       const rows = await queryAll<RawTagRow>(client.from("contlify_tags").select("*").order("name", { ascending: true }));
       return rows.map(mapRowToTag);
     },
   };
 }
+

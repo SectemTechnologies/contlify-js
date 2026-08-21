@@ -67,15 +67,21 @@ export class ResponseBuilder {
 
   /**
    * Converts a ContlifyError or unknown error directly into a standard Web API JSON Response.
+   * Security (H-4 / CWE-209): Prevents internal database driver / SQL error leakage in API responses.
    */
   public static fromError(error: unknown, headers: Record<string, string> = {}): Response {
     if (error instanceof ContlifyError) {
-      const payload = this.error(error.message, error.code, error.details);
+      const isInternalError = error.statusCode >= 500;
+      const clientMessage = isInternalError
+        ? "A database or internal adapter error occurred while processing the request."
+        : error.message;
+
+      const payload = this.error(clientMessage, error.code, isInternalError ? undefined : error.details);
       return this.toJsonResponse(payload, error.statusCode, headers);
     }
 
-    const message = error instanceof Error ? error.message : "An unexpected error occurred";
-    const payload = this.error(message, ErrorCode.INTERNAL_ERROR);
+    const payload = this.error("An unexpected internal error occurred", ErrorCode.INTERNAL_ERROR);
     return this.toJsonResponse(payload, HttpStatus.INTERNAL_SERVER_ERROR, headers);
   }
 }
+

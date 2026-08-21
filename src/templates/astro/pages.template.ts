@@ -125,12 +125,14 @@ try {
 
 const { slug } = Astro.params;
 const posts = slug ? await getPostsByCategory(slug) : [];
-const categoryName = slug ? slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ") : "Category";
+const matchedCat = posts[0]?.categories?.find((c: any) => (typeof c === "object" ? c.slug === slug : c === slug));
+const categoryName = (typeof matchedCat === "object" ? matchedCat?.name : matchedCat) ?? (slug ? slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ") : "Category");
+
 ---
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>{categoryName}</title>
+    <title>{posts.length > 0 ? categoryName : "Category Not Found"}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
   <body>
@@ -140,37 +142,44 @@ const categoryName = slug ? slug.charAt(0).toUpperCase() + slug.slice(1).replace
           ← Back to Categories
         </a>
       </div>
-      <h1 style="font-size: 2.25rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #111827;">{categoryName}</h1>
-      <p style="color: #6b7280; margin: 0 0 2rem 0;">{posts.length} {posts.length === 1 ? "article" : "articles"} in this category</p>
 
       {posts.length === 0 ? (
-        <div style="padding: 3rem; text-align: center; background-color: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb;">
-          <p style="color: #6b7280; margin: 0;">No published posts found in this category.</p>
+        <div style="padding: 3rem 1.5rem; text-align: center; background-color: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb;">
+          <h1 style="font-size: 1.75rem; font-weight: 700; color: #111827; margin: 0 0 0.75rem 0;">Category Not Found</h1>
+          <p style="color: #6b7280; margin: 0 0 1.5rem 0; font-size: 1rem;">The requested category does not exist or has no published articles yet.</p>
+          <a href="/blog" style="display: inline-flex; padding: 0.55rem 1.1rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 8px; text-decoration: none;">
+            Browse All Categories →
+          </a>
         </div>
       ) : (
-        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-          {posts.map((post) => {
-            const imageUrl = typeof post.coverImage === "string" ? post.coverImage : (post.coverImage as { url?: string })?.url;
-            return (
-              <article style="border: 1px solid #e5e7eb; border-radius: 10px; background-color: #ffffff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                {imageUrl && (
-                  <div style="width: 100%; height: 200px; overflow: hidden; background-color: #f3f4f6;">
-                    <img src={imageUrl} alt={post.title} style="width: 100%; height: 100%; object-fit: cover;" />
+        <div>
+          <h1 style="font-size: 2.25rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #111827;">{categoryName}</h1>
+          <p style="color: #6b7280; margin: 0 0 2rem 0;">{posts.length} {posts.length === 1 ? "article" : "articles"} in this category</p>
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            {posts.map((post) => {
+              const imageUrl = typeof post.coverImage === "string" ? post.coverImage : (post.coverImage as { url?: string })?.url;
+              return (
+                <article style="border: 1px solid #e5e7eb; border-radius: 10px; background-color: #ffffff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                  {imageUrl && (
+                    <div style="width: 100%; height: 200px; overflow: hidden; background-color: #f3f4f6;">
+                      <img src={imageUrl} alt={post.title} style="width: 100%; height: 100%; object-fit: cover;" />
+                    </div>
+                  )}
+                  <div style="padding: 1.5rem;">
+                    <h2 style="font-size: 1.5rem; font-weight: 600; margin: 0 0 0.5rem 0; color: #111827;">{post.title}</h2>
+                    {post.excerpt && <p style="color: #4b5563; font-size: 0.95rem; margin: 0 0 1rem 0; line-height: 1.6;">{post.excerpt}</p>}
+                    <a href={\`/blog/post/\${post.slug}\`} style="display: inline-flex; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 6px; text-decoration: none;">
+                      Read Article →
+                    </a>
                   </div>
-                )}
-                <div style="padding: 1.5rem;">
-                  <h2 style="font-size: 1.5rem; font-weight: 600; margin: 0 0 0.5rem 0; color: #111827;">{post.title}</h2>
-                  {post.excerpt && <p style="color: #4b5563; font-size: 0.95rem; margin: 0 0 1rem 0; line-height: 1.6;">{post.excerpt}</p>}
-                  <a href={\`/blog/post/\${post.slug}\`} style="display: inline-flex; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 6px; text-decoration: none;">
-                    Read Article →
-                  </a>
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
         </div>
       )}
     </main>
+
   </body>
 </html>
 `;

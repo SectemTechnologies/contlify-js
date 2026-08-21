@@ -12,7 +12,7 @@ const handler = createContlifyHandler({
   apiKey: process.env.CONTLIFY_API_KEY,
   adapter: contlifyAdapter,
   apiPathPrefix: "/api/contlify",
-  getPostUrl: (post) => \`/blog/\${post.slug}\`,
+  getPostUrl: (post) => \`/blog/post/\${post.slug}\`,
 });
 
 export {

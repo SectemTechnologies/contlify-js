@@ -50,18 +50,19 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
       postUrl = ctx.config.getPostUrl(postForUrl);
     } catch (err) {
       ctx.config.logger.warn("Custom getPostUrl callback threw an error:", err);
-      postUrl = `/blog/${slug}`;
+      postUrl = `/blog/post/${slug}`;
     }
   } else if (ctx.config.buildPostUrl) {
     try {
       postUrl = ctx.config.buildPostUrl(postForUrl);
     } catch (err) {
       ctx.config.logger.warn("Custom buildPostUrl callback threw an error:", err);
-      postUrl = `/blog/${slug}`;
+      postUrl = `/blog/post/${slug}`;
     }
   } else {
-    postUrl = `/blog/${slug}`;
+    postUrl = `/blog/post/${slug}`;
   }
+
 
   // Enriched payload passed to adapter
   const enrichedPayload = {

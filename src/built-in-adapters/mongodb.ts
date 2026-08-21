@@ -19,8 +19,10 @@ export interface MongoCollectionLike<T = Record<string, unknown>> {
   };
   insertOne(doc: T): Promise<unknown>;
   updateOne(filter: Record<string, unknown>, update: Record<string, unknown>, options?: { upsert?: boolean }): Promise<unknown>;
+  updateMany?(filter: Record<string, unknown>, update: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
   countDocuments(filter?: Record<string, unknown>): Promise<number>;
 }
+
 
 export interface MongoDbLike {
   collection<T = Record<string, unknown>>(name: string): MongoCollectionLike<T> | unknown;
@@ -240,7 +242,7 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "created",
-        url: `/blog/${slug}`,
+        url: `/blog/post/${slug}`,
       };
     },
 
@@ -272,9 +274,10 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         slug: newSlug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "updated",
-        url: `/blog/${newSlug}`,
+        url: `/blog/post/${newSlug}`,
       };
     },
+
 
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
       try {
@@ -468,6 +471,51 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       }
     },
 
+    async updateCategory(
+      idOrSlug: string,
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+    ): Promise<Category> {
+      const categories = await getCategoriesCol();
+      if (!categories) throw new Error("MongoDB categories collection not available");
+
+      const updateData: Record<string, unknown> = {};
+      if (payload.name !== undefined) updateData.name = payload.name;
+      if (payload.slug !== undefined) updateData.slug = payload.slug;
+      if (payload.description !== undefined) updateData.description = payload.description;
+
+      const filter = { $or: [{ id: idOrSlug }, { slug: idOrSlug }] };
+      if (Object.keys(updateData).length > 0) {
+        await categories.updateOne(filter, { $set: updateData });
+
+        // If category slug or name was updated, optionally update embedded categories in posts collection
+        const posts = await getPostsCol();
+        if (posts && (payload.name !== undefined || payload.slug !== undefined)) {
+          try {
+            await posts.updateMany?.(
+              { "categories.slug": idOrSlug },
+
+              {
+                $set: {
+                  ...(payload.name !== undefined ? { "categories.$[elem].name": payload.name } : {}),
+                  ...(payload.slug !== undefined ? { "categories.$[elem].slug": payload.slug } : {}),
+                },
+              },
+              { arrayFilters: [{ "elem.slug": idOrSlug }] }
+            );
+          } catch {
+            // Ignore arrayFilters errors if not supported by older Mongo drivers
+          }
+        }
+      }
+
+      const updated = await categories.findOne(filter);
+      if (!updated) {
+        throw new Error(`Category not found: ${idOrSlug}`);
+      }
+
+      return docToCategory(updated);
+    },
+
     async getTags(): Promise<Tag[]> {
       try {
         const tags = await getTagsCol();
@@ -481,3 +529,4 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
     },
   };
 }
+

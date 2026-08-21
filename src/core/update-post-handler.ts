@@ -58,12 +58,13 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
         postUrl = resolver(postForUrl);
       } catch (err) {
         ctx.config.logger.warn("Custom getPostUrl callback threw an error during update:", err);
-        postUrl = `/blog/${slug}`;
+        postUrl = `/blog/post/${slug}`;
       }
     } else {
-      postUrl = `/blog/${slug}`;
+      postUrl = `/blog/post/${slug}`;
     }
   }
+
 
   const enrichedPayload = {
     ...payload,

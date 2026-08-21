@@ -15,7 +15,9 @@ interface PageProps {
 export default async function CategoryPostsPage({ params }: PageProps) {
   const { slug } = await params;
   const posts = await getPostsByCategory(slug);
-  const categoryName = slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ");
+  const matchedCat = posts[0]?.categories?.find((c: any) => (typeof c === "object" ? c.slug === slug : c === slug));
+  const categoryName = (typeof matchedCat === "object" ? matchedCat?.name : matchedCat) ?? (slug ? slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ") : "Category");
+
 
   return (
     <main style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -45,17 +47,34 @@ export default async function CategoryPostsPage({ params }: PageProps) {
         </a>
       </div>
 
-      <h1 style={{ fontSize: "2.25rem", fontWeight: "700", margin: "0 0 0.5rem 0", color: "#111827" }}>{categoryName}</h1>
-      <p style={{ color: "#6b7280", margin: "0 0 2rem 0", fontSize: "1rem" }}>
-        {posts.length} {posts.length === 1 ? "article" : "articles"} in this category
-      </p>
-
       {posts.length === 0 ? (
-        <div style={{ padding: "3rem", textAlign: "center", backgroundColor: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
-          <p style={{ color: "#6b7280", margin: 0 }}>No published posts found in this category.</p>
+        <div style={{ padding: "3rem 1.5rem", textAlign: "center", backgroundColor: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: "700", color: "#111827", margin: "0 0 0.75rem 0" }}>Category Not Found</h1>
+          <p style={{ color: "#6b7280", margin: "0 0 1.5rem 0", fontSize: "1rem" }}>The requested category does not exist or has no published articles yet.</p>
+          <a
+            href="/blog"
+            style={{
+              display: "inline-flex",
+              padding: "0.55rem 1.1rem",
+              fontSize: "0.875rem",
+              fontWeight: "600",
+              color: "#ffffff",
+              backgroundColor: "#f97316",
+              borderRadius: "8px",
+              textDecoration: "none",
+            }}
+          >
+            Browse All Categories &rarr;
+          </a>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        <div>
+          <h1 style={{ fontSize: "2.25rem", fontWeight: "700", margin: "0 0 0.5rem 0", color: "#111827" }}>{categoryName}</h1>
+          <p style={{ color: "#6b7280", margin: "0 0 2rem 0", fontSize: "1rem" }}>
+            {posts.length} {posts.length === 1 ? "article" : "articles"} in this category
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+
           {posts.map((post) => {
             const imageUrl = typeof post.coverImage === "string" ? post.coverImage : (post.coverImage as any)?.url;
             return (

@@ -252,7 +252,7 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
         slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "created",
-        url: `/blog/${slug}`,
+        url: `/blog/post/${slug}`,
       };
     },
 
@@ -296,9 +296,10 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
         slug: newSlug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "updated",
-        url: `/blog/${newSlug}`,
+        url: `/blog/post/${newSlug}`,
       };
     },
+
 
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
       const db = await getDb();
@@ -453,6 +454,47 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       }));
     },
 
+    async updateCategory(
+      idOrSlug: string,
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+    ): Promise<Category> {
+      const db = await getDb();
+      if (!db) throw new Error("D1 database binding not available");
+
+      const fields: string[] = [];
+      const params: unknown[] = [];
+
+      if (payload.name !== undefined) {
+        fields.push("name = ?");
+        params.push(payload.name);
+      }
+      if (payload.slug !== undefined) {
+        fields.push("slug = ?");
+        params.push(payload.slug);
+      }
+      if (payload.description !== undefined) {
+        fields.push("description = ?");
+        params.push(payload.description);
+      }
+
+      if (fields.length > 0) {
+        const sql = `UPDATE contlify_categories SET ${fields.join(", ")} WHERE id = ? OR slug = ?`;
+        await db.prepare(sql).bind(...params, idOrSlug, idOrSlug).run();
+      }
+
+      const row = await db
+        .prepare("SELECT * FROM contlify_categories WHERE id = ? OR slug = ? LIMIT 1")
+        .bind(idOrSlug, idOrSlug)
+        .first<RawCategoryRow>();
+
+
+      if (!row) {
+        throw new Error(`Category not found: ${idOrSlug}`);
+      }
+
+      return mapRowToCategory(row);
+    },
+
     async getTags(): Promise<Tag[]> {
       const db = await getDb();
       if (!db) return [];
@@ -462,3 +504,4 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
     },
   };
 }
+

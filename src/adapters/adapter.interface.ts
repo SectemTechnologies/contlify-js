@@ -25,9 +25,18 @@ export interface ContlifyAdapter {
   ): Promise<PublishResponse | Post | Record<string, unknown>>;
 
   /**
+   * Direct updateCategory method on adapter root.
+   */
+  updateCategory?(
+    idOrSlug: string,
+    payload: { name?: string; slug?: string; description?: string; coverImage?: string | { url?: string } } & Record<string, unknown>
+  ): Promise<Category | Record<string, unknown>>;
+
+  /**
    * Direct upsertPost method on adapter root.
    */
   upsertPost?(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse | Post | Record<string, unknown>>;
+
 
   // --- Read-Side Query Methods ---
 

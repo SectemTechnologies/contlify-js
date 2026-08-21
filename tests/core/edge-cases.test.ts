@@ -49,8 +49,10 @@ describe("Edge-Case & Resilience Unit Test Suite", () => {
     const body = (await response.json()) as { success: boolean; error: { code: string; message: string } };
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("ADAPTER_ERROR");
-    expect(body.error.message).toContain("Database connection pool exhausted");
+    expect(body.error.message).toBe("A database or internal adapter error occurred while processing the request.");
+    expect(body.error.message).not.toContain("Database connection pool exhausted");
   });
+
 
   it("should handle URI encoded special characters in route parameters", async () => {
     const updatePostMock = vi.fn().mockResolvedValue({ id: "special-post" });

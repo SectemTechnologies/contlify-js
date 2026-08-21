@@ -7,7 +7,9 @@ import { handleUpdatePost } from "./update-post-handler.js";
 import { handleValidate } from "./validate-handler.js";
 import { handleGetAuthors } from "./authors-handler.js";
 import { handleGetCategories } from "./categories-handler.js";
+import { handleUpdateCategory } from "./update-category-handler.js";
 import { handleGetTags } from "./tags-handler.js";
+
 import { createAuthMiddleware, composePipeline } from "../middleware/index.js";
 
 /**
@@ -76,7 +78,7 @@ export function createContlifyHandler(userConfig: ContlifyConfig = {}): Contlify
     "Fetch list of post authors from adapter"
   );
 
-  // 5. Categories Taxonomy: GET /categories
+  // 5. Categories Taxonomy: GET /categories, PATCH /categories/:id, PUT /categories/:id
   router.register(
     "GET",
     "/categories",
@@ -84,7 +86,22 @@ export function createContlifyHandler(userConfig: ContlifyConfig = {}): Contlify
     "Fetch list of post categories from adapter"
   );
 
+  router.register(
+    "PATCH",
+    "/categories/:id",
+    protectedRoute(handleUpdateCategory),
+    "Partial update of an existing category by ID or slug"
+  );
+
+  router.register(
+    "PUT",
+    "/categories/:id",
+    protectedRoute(handleUpdateCategory),
+    "Full update of an existing category by ID or slug"
+  );
+
   // 6. Tags Taxonomy: GET /tags
+
   router.register(
     "GET",
     "/tags",

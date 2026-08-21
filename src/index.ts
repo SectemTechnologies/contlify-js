@@ -17,7 +17,9 @@ export { handleUpdatePost } from "./core/update-post-handler.js";
 export { handleValidate } from "./core/validate-handler.js";
 export { handleGetAuthors } from "./core/authors-handler.js";
 export { handleGetCategories } from "./core/categories-handler.js";
+export { handleUpdateCategory } from "./core/update-category-handler.js";
 export { handleGetTags } from "./core/tags-handler.js";
+
 
 // Node.js / Express Middleware Bridge (Express, Angular SSR, Fastify)
 export {

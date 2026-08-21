@@ -156,7 +156,7 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
         slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "created",
-        url: `/blog/${slug}`,
+        url: `/blog/post/${slug}`,
       };
     },
 
@@ -196,9 +196,10 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
         slug: updatedSlug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "updated",
-        url: `/blog/${updatedSlug}`,
+        url: `/blog/post/${updatedSlug}`,
       };
     },
+
 
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
       const conditions: string[] = [];
@@ -315,9 +316,54 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
       }));
     },
 
+    async updateCategory(
+      idOrSlug: string,
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+    ): Promise<Category> {
+      const fields: string[] = [];
+      const params: unknown[] = [idOrSlug];
+      let idx = 2;
+
+      if (payload.name !== undefined) {
+        fields.push(`name = $${idx++}`);
+        params.push(payload.name);
+      }
+      if (payload.slug !== undefined) {
+        fields.push(`slug = $${idx++}`);
+        params.push(payload.slug);
+      }
+      if (payload.description !== undefined) {
+        fields.push(`description = $${idx++}`);
+        params.push(payload.description);
+      }
+
+      if (fields.length === 0) {
+        const existing = await client.query<RawCategoryRow>(
+          `SELECT * FROM contlify_categories WHERE id::text = $1 OR slug = $1 LIMIT 1`,
+          [idOrSlug]
+        );
+        if (!existing.rows[0]) throw new Error(`Category not found: ${idOrSlug}`);
+        return mapRowToCategory(existing.rows[0]);
+      }
+
+      const res = await client.query<RawCategoryRow>(
+        `UPDATE contlify_categories SET ${fields.join(", ")}
+         WHERE id::text = $1 OR slug = $1
+         RETURNING *`,
+        params
+      );
+
+      if (!res.rows[0]) {
+        throw new Error(`Category not found: ${idOrSlug}`);
+      }
+
+      return mapRowToCategory(res.rows[0]);
+    },
+
     async getTags(): Promise<Tag[]> {
       const res = await client.query<RawTagRow>("SELECT * FROM contlify_tags ORDER BY name ASC");
       return res.rows.map(mapRowToTag);
     },
   };
 }
+
