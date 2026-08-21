@@ -64,6 +64,18 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
   }
 
 
+  // 5. Category Fallback: Default to "Uncategorized" if no categories are provided
+  let categories = payload.categories;
+  if (!categories || (Array.isArray(categories) && categories.length === 0)) {
+    categories = [
+      {
+        name: "Uncategorized",
+        slug: "uncategorized",
+        description: "General and uncategorized articles",
+      },
+    ];
+  }
+
   // Enriched payload passed to adapter
   const enrichedPayload = {
     ...payload,
@@ -71,7 +83,9 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
     slug,
     custom_slug: slug,
     post_url: postUrl,
+    categories,
   };
+
 
   // 5. Adapter Invocation
   const adapter = ctx.adapter;

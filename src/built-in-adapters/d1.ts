@@ -376,7 +376,9 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
 
       const rows = await all<RawPostRow>(
         db.prepare(
-          `SELECT p.* FROM contlify_posts p
+          `SELECT p.*, a.name as author_name, a.slug as author_slug, a.email as author_email, a.avatar as author_avatar
+           FROM contlify_posts p
+           LEFT JOIN contlify_authors a ON p.author_id = a.id
            INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
            INNER JOIN contlify_categories c ON c.id = pc.category_id
            WHERE c.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
@@ -392,7 +394,9 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
 
       const rows = await all<RawPostRow>(
         db.prepare(
-          `SELECT p.* FROM contlify_posts p
+          `SELECT p.*, a.name as author_name, a.slug as author_slug, a.email as author_email, a.avatar as author_avatar
+           FROM contlify_posts p
+           LEFT JOIN contlify_authors a ON p.author_id = a.id
            INNER JOIN contlify_post_tags pt ON p.id = pt.post_id
            INNER JOIN contlify_tags t ON t.id = pt.tag_id
            WHERE t.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
@@ -401,6 +405,7 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       );
       return Promise.all(rows.map((row) => resolveFullPost(row)));
     },
+
 
     async getPostCount(options?: { status?: Post["status"] }): Promise<number> {
       const db = await getDb();

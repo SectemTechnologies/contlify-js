@@ -131,9 +131,11 @@ export default async function CategoryPostsPage({ params }: PageProps) {
               </article>
             );
           })}
+          </div>
         </div>
       )}
     </main>
+
   );
 }
 `;

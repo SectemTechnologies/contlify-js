@@ -237,7 +237,30 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
 
       await posts.updateOne({ slug }, { $set: doc }, { upsert: true });
 
+      // Upsert categories into contlify_categories collection
+      const categoriesCol = await getCategoriesCol();
+      if (categoriesCol && categoriesDocs.length > 0) {
+        for (const cat of categoriesDocs) {
+          await categoriesCol.updateOne(
+            { slug: cat.slug },
+            { $set: { id: cat.id, name: cat.name, slug: cat.slug, updatedAt: now } },
+            { upsert: true }
+          );
+        }
+      }
+
+      // Upsert author into contlify_authors collection
+      const authorsCol = await getAuthorsCol();
+      if (authorsCol && authorDoc) {
+        await authorsCol.updateOne(
+          { slug: authorDoc.slug },
+          { $set: { ...authorDoc, updatedAt: now } },
+          { upsert: true }
+        );
+      }
+
       return {
+
         postId: id,
         slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
@@ -440,12 +463,34 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
     async getCategories(): Promise<Category[]> {
       try {
         const categories = await getCategoriesCol();
-        if (!categories) return [];
-
-        const docs = await categories.find({}).sort({ name: 1 }).skip(0).limit(1000).toArray();
-        const baseCategories = docs.map(docToCategory);
-
         const posts = await getPostsCol();
+
+        let baseCategories: Category[] = [];
+        if (categories) {
+          const docs = await categories.find({}).sort({ name: 1 }).skip(0).limit(1000).toArray();
+          baseCategories = docs.map(docToCategory);
+        }
+
+        // Fallback: If contlify_categories collection is empty, aggregate categories directly from posts collection
+        if (baseCategories.length === 0 && posts) {
+          const postDocs = await posts.find({}).sort({ publishedAt: -1 }).skip(0).limit(1000).toArray();
+          const categoryMap = new Map<string, Category>();
+          for (const postDoc of postDocs) {
+            const rawCats = (postDoc.categories ?? []) as Array<{ id?: string; name?: string; slug?: string }>;
+            for (const cat of rawCats) {
+              if (cat && cat.slug && !categoryMap.has(cat.slug)) {
+                categoryMap.set(cat.slug, {
+                  id: cat.id ?? `cat_${cat.slug}`,
+                  name: cat.name ?? cat.slug,
+                  slug: cat.slug,
+                  coverImage: postDoc.coverImage ? String(postDoc.coverImage) : undefined,
+                });
+              }
+            }
+          }
+          baseCategories = Array.from(categoryMap.values());
+        }
+
         if (!posts) return baseCategories;
 
         const results = await Promise.all(
@@ -470,6 +515,7 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         return [];
       }
     },
+
 
     async updateCategory(
       idOrSlug: string,

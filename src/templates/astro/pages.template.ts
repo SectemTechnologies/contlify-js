@@ -168,10 +168,20 @@ const categoryName = (typeof matchedCat === "object" ? matchedCat?.name : matche
                   <div style="padding: 1.5rem;">
                     <h2 style="font-size: 1.5rem; font-weight: 600; margin: 0 0 0.5rem 0; color: #111827;">{post.title}</h2>
                     {post.excerpt && <p style="color: #4b5563; font-size: 0.95rem; margin: 0 0 1rem 0; line-height: 1.6;">{post.excerpt}</p>}
-                    <a href={\`/blog/post/\${post.slug}\`} style="display: inline-flex; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 6px; text-decoration: none;">
-                      Read Article →
-                    </a>
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+                      <div style="font-size: 0.85rem; color: #6b7280;">
+                        <time>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : ""}</time>
+                        {post.author && <span> &middot; {typeof post.author === "object" ? post.author.name : post.author}</span>}
+                      </div>
+                      <a href={'/blog/post/' + post.slug} style="display: inline-flex; padding: 0.45rem 0.9rem; font-size: 0.875rem; font-weight: 600; color: #ffffff; background-color: #f97316; border-radius: 6px; text-decoration: none;">
+                        Read Article →
+                      </a>
+
+
+
+                    </div>
                   </div>
+
                 </article>
               );
             })}

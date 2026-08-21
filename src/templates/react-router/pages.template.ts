@@ -159,6 +159,7 @@ export default function CategoryPosts() {
               </article>
             );
           })}
+          </div>
         </div>
       )}
     </main>
