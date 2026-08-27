@@ -1,6 +1,6 @@
 import { AdapterError } from "../errors/adapter-error.js";
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
-import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
+import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
 
 /**
@@ -43,6 +43,75 @@ function cleanBindParams(params: unknown[]): (string | number | boolean | null)[
   return params.map(sanitizeParam);
 }
 
+let isD1Migrated = false;
+
+export async function ensureD1Schema(db: D1DatabaseLike): Promise<void> {
+  if (isD1Migrated) return;
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS contlify_posts (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, subtitle TEXT, content TEXT NOT NULL, content_type TEXT DEFAULT 'markdown', excerpt TEXT, cover_image TEXT, status TEXT DEFAULT 'published', author_id TEXT, seo_data TEXT, custom_fields TEXT, published_at DATETIME DEFAULT CURRENT_TIMESTAMP, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS contlify_authors (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, email TEXT, bio TEXT, avatar TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS contlify_categories (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, description TEXT, parent_id TEXT, cover_image TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS contlify_tags (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, description TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS contlify_post_categories (
+      post_id TEXT REFERENCES contlify_posts(id) ON DELETE CASCADE, category_id TEXT REFERENCES contlify_categories(id) ON DELETE CASCADE, PRIMARY KEY (post_id, category_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS contlify_post_tags (
+      post_id TEXT REFERENCES contlify_posts(id) ON DELETE CASCADE, tag_id TEXT REFERENCES contlify_tags(id) ON DELETE CASCADE, PRIMARY KEY (post_id, tag_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_posts_slug ON contlify_posts(slug)`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_posts_status ON contlify_posts(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_posts_published ON contlify_posts(published_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_authors_slug ON contlify_authors(slug)`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_categories_slug ON contlify_categories(slug)`,
+    `CREATE INDEX IF NOT EXISTS idx_contlify_tags_slug ON contlify_tags(slug)`
+  ];
+
+  try {
+    for (const sql of statements) {
+      await db.prepare(sql).run();
+    }
+    isD1Migrated = true;
+  } catch {
+    // Ignore if already created
+  }
+}
+
+const NON_D1_BINDINGS = new Set([
+  "ASSETS",
+  "WORKER_SELF_REFERENCE",
+  "IMAGES",
+  "NEXT_CACHE_WORKERS_KV",
+  "__STATIC_CONTENT",
+  "CF_PAGES",
+]);
+
+/**
+ * Validates whether an object is a real Cloudflare D1 Database binding
+ * and NOT a Cloudflare Worker Service Binding / RPC proxy / Fetcher.
+ */
+export function isRealD1Database(val: unknown): val is D1DatabaseLike {
+  if (!val || typeof val !== "object") return false;
+  const obj = val as Record<string, unknown>;
+
+  // Cloudflare Service Bindings, Fetchers, and RPC targets have a .fetch method
+  if (typeof obj.fetch === "function") return false;
+  if (obj.constructor?.name === "Fetcher" || obj.constructor?.name === "WorkerEntrypoint") return false;
+
+  // Real D1Database has prepare, and either batch/exec or D1Database constructor
+  return (
+    typeof obj.prepare === "function" &&
+    (typeof obj.batch === "function" || typeof obj.exec === "function" || obj.constructor?.name === "D1Database")
+  );
+}
+
 /**
  * Creates a pre-built Contlify adapter for Cloudflare D1.
  * Accepts a static D1Database binding, an env object, or a dynamic resolver function.
@@ -62,19 +131,40 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
         return null;
       }
 
-      // 1. Direct D1 database object with .prepare method
-      if (typeof (instance as D1DatabaseLike).prepare === "function") {
-        return instance as D1DatabaseLike;
-      }
+      let db: D1DatabaseLike | null = null;
 
-      // 2. Auto-scan Cloudflare env object for ANY property with .prepare method
-      for (const value of Object.values(instance as Record<string, unknown>)) {
-        if (value && typeof value === "object" && typeof (value as D1DatabaseLike).prepare === "function") {
-          return value as D1DatabaseLike;
+      // 1. Direct D1 database object
+      if (isRealD1Database(instance)) {
+        db = instance;
+      } else if (typeof instance === "object" && instance !== null) {
+        // 2. Scan Cloudflare env object
+        const env = instance as Record<string, unknown>;
+
+        // Look for common/known binding names first
+        for (const key of ["DB", "d1_db_test", "contlify_db_blog", "contlify_db", "d1", "DATABASE"]) {
+          if (env[key] && isRealD1Database(env[key])) {
+            db = env[key] as D1DatabaseLike;
+            break;
+          }
+        }
+
+        // If not matched by common names, scan all entries excluding non-D1 bindings
+        if (!db) {
+          for (const [key, value] of Object.entries(env)) {
+            if (NON_D1_BINDINGS.has(key)) continue;
+            if (isRealD1Database(value)) {
+              db = value as D1DatabaseLike;
+              break;
+            }
+          }
         }
       }
 
-      return null;
+      if (db) {
+        await ensureD1Schema(db);
+      }
+
+      return db;
     } catch {
       return null;
     }
@@ -152,7 +242,16 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const content = payload.content || "";
       const contentType = payload.contentType ?? "markdown";
       const excerpt = payload.excerpt ?? null;
-      const coverImg = (payload.featured_image as string | undefined) ?? payload.coverImage ?? null;
+      const coverImg = extractImageUrl(
+        payload.coverImage ??
+        payload.cover_image ??
+        payload.featured_image ??
+        payload.featuredImage ??
+        payload.image ??
+        payload.imageUrl ??
+        payload.image_url ??
+        payload.thumbnail
+      );
       const status = payload.status ?? "published";
       const seoData = payload.seo ? JSON.stringify(payload.seo) : null;
       const customFields = payload.customFields ? JSON.stringify(payload.customFields) : null;
@@ -218,10 +317,13 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
           const catName = (cat.name as string | undefined) || "Uncategorized";
           const catSlug = slugify((cat.slug as string | undefined) ?? catName);
           const catId = (cat.externalId as string | undefined) ?? `cat_${catSlug}`;
+          const catCoverImg = extractImageUrl(cat.coverImage ?? cat.cover_image ?? cat.image ?? cat.imageUrl);
 
           await db.prepare(
-            `INSERT INTO contlify_categories (id, name, slug, created_at, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(slug) DO NOTHING`
-          ).bind(...cleanBindParams([catId, catName, catSlug, now, now])).run();
+            `INSERT INTO contlify_categories (id, name, slug, cover_image, created_at, updated_at)
+             VALUES (?,?,?,?,?,?)
+             ON CONFLICT(slug) DO UPDATE SET name=excluded.name, cover_image=COALESCE(excluded.cover_image, contlify_categories.cover_image), updated_at=excluded.updated_at`
+          ).bind(...cleanBindParams([catId, catName, catSlug, catCoverImg, now, now])).run();
 
           await db.prepare(
             `INSERT INTO contlify_post_categories (post_id, category_id) VALUES (?,?) ON CONFLICT DO NOTHING`
@@ -272,6 +374,22 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       if (payload.content) { parts.push("content=?"); params.push(payload.content); }
       if (payload.status) { parts.push("status=?"); params.push(payload.status); }
       if (payload.excerpt) { parts.push("excerpt=?"); params.push(payload.excerpt); }
+      
+      const coverImg = extractImageUrl(
+        payload.coverImage ??
+        payload.cover_image ??
+        payload.featured_image ??
+        payload.featuredImage ??
+        payload.image ??
+        payload.imageUrl ??
+        payload.image_url ??
+        payload.thumbnail
+      );
+      if (coverImg !== null || payload.coverImage !== undefined || payload.cover_image !== undefined || payload.featured_image !== undefined) {
+        parts.push("cover_image=?");
+        params.push(coverImg);
+      }
+
       if (payload.custom_slug ?? payload.slug) {
         parts.push("slug=?");
         params.push(slugify((payload.custom_slug ?? payload.slug) as string));
@@ -441,27 +559,27 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const db = await getDb();
       if (!db) return [];
 
-      const rows = await all<RawCategoryRow & { cover_image?: string }>(
+      const rows = await all<RawCategoryRow>(
         db.prepare(
-          `SELECT c.*,
-             (SELECT p.cover_image
-              FROM contlify_posts p
-              INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
-              WHERE pc.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
-              ORDER BY p.published_at DESC LIMIT 1) AS cover_image
+          `SELECT c.id, c.name, c.slug, c.description, c.parent_id, c.created_at, c.updated_at,
+             COALESCE(
+               c.cover_image,
+               (SELECT p.cover_image
+                FROM contlify_posts p
+                INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
+                WHERE pc.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
+                ORDER BY p.published_at DESC LIMIT 1)
+             ) AS cover_image
            FROM contlify_categories c
            ORDER BY c.name ASC`
         )
       );
-      return rows.map((row) => ({
-        ...mapRowToCategory(row),
-        coverImage: row.cover_image ? row.cover_image : undefined,
-      }));
+      return rows.map(mapRowToCategory);
     },
 
     async updateCategory(
       idOrSlug: string,
-      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string } & Record<string, unknown>
     ): Promise<Category> {
       const db = await getDb();
       if (!db) throw new Error("D1 database binding not available");
@@ -480,6 +598,11 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       if (payload.description !== undefined) {
         fields.push("description = ?");
         params.push(payload.description);
+      }
+      if (payload.coverImage !== undefined || payload.cover_image !== undefined) {
+        const cImg = extractImageUrl(payload.coverImage ?? payload.cover_image);
+        fields.push("cover_image = ?");
+        params.push(cImg);
       }
 
       if (fields.length > 0) {

@@ -10,20 +10,25 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/frameworks/next/index.d.ts",
+      "import": "./dist/frameworks/next/index.mjs",
+      "require": "./dist/frameworks/next/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "bin": {
-    "contlify": "./dist/bin/contlify.mjs"
+    "contlify": "./dist/bin/contlify.js"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "cli": "node dist/bin/contlify.mjs"
+    "cli": "node dist/bin/contlify.js"
   },
   "repository": {
     "type": "git",
@@ -48,8 +53,33 @@
   "publishConfig": {
     "access": "public"
   },
+  "peerDependencies": {
+    "@neondatabase/serverless": "^0.10.4 || ^1.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "mongodb": "^6.0.0 || ^7.0.0",
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@neondatabase/serverless": {
+      "optional": true
+    },
+    "@supabase/supabase-js": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@supabase/supabase-js": "^2.112.4",
     "@types/node": "^20.14.12",
+    "@types/pg": "^8.23.1",
+    "mongodb": "^7.6.0",
+    "pg": "^8.23.0",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"

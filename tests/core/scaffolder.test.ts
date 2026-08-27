@@ -2,178 +2,164 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "../../src/cli/scaffolder.js";
+import { scaffoldProjectV2, formatScaffoldResults, detectBaseDir } from "../../src/cli/scaffolder.js";
 
-describe("Scaffolder", () => {
+describe("v2 Scaffolder", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    // Create a unique temp directory inside the workspace for each test
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "contlify-test-"));
   });
 
   afterEach(() => {
-    // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should create all 7 scaffold files in the target directory", () => {
-    const results = scaffoldProject({ projectRoot: tempDir });
+  it("should create minimal 2 scaffold files for Next.js (contlify.config.ts + route.ts)", () => {
+    const results = scaffoldProjectV2({
+      projectRoot: tempDir,
+      framework: "nextjs",
+      dbType: "postgres",
+    });
 
     const created = results.filter((r) => r.status === "created");
-    expect(created).toHaveLength(7);
+    expect(created).toHaveLength(2);
 
-    // Verify files actually exist on disk
     for (const result of created) {
       const filePath = path.join(tempDir, result.relativePath);
       expect(fs.existsSync(filePath)).toBe(true);
     }
+
+    expect(fs.existsSync(path.join(tempDir, "contlify.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "app/api/contlify/v1/[...path]/route.ts"))).toBe(true);
   });
 
-  it("should create correct directory structure", () => {
-    scaffoldProject({ projectRoot: tempDir });
+  it("should write valid v2 config and route handler content", () => {
+    scaffoldProjectV2({
+      projectRoot: tempDir,
+      framework: "nextjs",
+      dbType: "postgres",
+      migrationMode: "auto",
+      postgresDeployment: "cloudflare",
+    });
 
-    expect(fs.existsSync(path.join(tempDir, "app/api/contlify/[...path]"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "app/blog/category/[slug]"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "app/blog/post/[slug]"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "lib/contlify"))).toBe(true);
-  });
-
-  it("should write valid content to files", () => {
-    scaffoldProject({ projectRoot: tempDir });
+    const configContent = fs.readFileSync(path.join(tempDir, "contlify.config.ts"), "utf-8");
+    expect(configContent).toContain("defineConfig");
+    expect(configContent).toContain('driver: "postgres"');
+    expect(configContent).toContain("autoMigrate: true");
 
     const routeContent = fs.readFileSync(
-      path.join(tempDir, "app/api/contlify/[...path]/route.ts"),
+      path.join(tempDir, "app/api/contlify/v1/[...path]/route.ts"),
       "utf-8"
     );
-    expect(routeContent).toContain("createContlifyHandler");
-
-    const queriesContent = fs.readFileSync(
-      path.join(tempDir, "lib/contlify/queries.ts"),
-      "utf-8"
-    );
-    expect(queriesContent).toContain("getCategories");
-
-    const blogPage = fs.readFileSync(
-      path.join(tempDir, "app/blog/page.tsx"),
-      "utf-8"
-    );
-    expect(blogPage).toContain("export default async function");
+    expect(routeContent).toContain("createNextHandler");
+    expect(routeContent).toContain("contlify.config");
   });
 
   it("should skip existing files when overwrite is false", () => {
-    // First scaffold
-    scaffoldProject({ projectRoot: tempDir });
+    scaffoldProjectV2({
+      projectRoot: tempDir,
+      framework: "nextjs",
+      dbType: "postgres",
+    });
 
-    // Write a custom file to one location
-    const customContent = "// My custom route handler";
-    fs.writeFileSync(
-      path.join(tempDir, "app/api/contlify/[...path]/route.ts"),
-      customContent,
-      "utf-8"
-    );
+    const customContent = "// My custom config";
+    fs.writeFileSync(path.join(tempDir, "contlify.config.ts"), customContent, "utf-8");
 
-    // Second scaffold without overwrite
-    const results = scaffoldProject({ projectRoot: tempDir, overwrite: false });
+    const results = scaffoldProjectV2({
+      projectRoot: tempDir,
+      framework: "nextjs",
+      dbType: "postgres",
+      overwrite: false,
+    });
 
-    // The route.ts should be skipped
-    const routeResult = results.find((r) =>
-      r.relativePath === "app/api/contlify/[...path]/route.ts"
-    );
-    expect(routeResult?.status).toBe("skipped");
+    const configResult = results.find((r) => r.relativePath === "contlify.config.ts");
+    expect(configResult?.status).toBe("skipped");
 
-    // Verify file was not overwritten
-    const content = fs.readFileSync(
-      path.join(tempDir, "app/api/contlify/[...path]/route.ts"),
-      "utf-8"
-    );
-    expect(content).toBe(customContent);
+    const afterContent = fs.readFileSync(path.join(tempDir, "contlify.config.ts"), "utf-8");
+    expect(afterContent).toBe(customContent);
   });
 
   it("should overwrite existing files when overwrite is true", () => {
-    // First scaffold
-    scaffoldProject({ projectRoot: tempDir });
-
-    // Write a custom file
-    fs.writeFileSync(
-      path.join(tempDir, "app/api/contlify/[...path]/route.ts"),
-      "// custom",
-      "utf-8"
-    );
-
-    // Second scaffold with overwrite
-    const results = scaffoldProject({ projectRoot: tempDir, overwrite: true });
-
-    const routeResult = results.find((r) =>
-      r.relativePath === "app/api/contlify/[...path]/route.ts"
-    );
-    expect(routeResult?.status).toBe("created");
-
-    // Verify file was overwritten with template content
-    const content = fs.readFileSync(
-      path.join(tempDir, "app/api/contlify/[...path]/route.ts"),
-      "utf-8"
-    );
-    expect(content).toContain("createContlifyHandler");
-  });
-
-  it("should support 'only' filter to scaffold specific files", () => {
-    const results = scaffoldProject({
+    scaffoldProjectV2({
       projectRoot: tempDir,
-      only: ["app/blog/page.tsx", "app/blog/post/[slug]/page.tsx"],
+      framework: "nextjs",
+      dbType: "postgres",
     });
 
-    expect(results).toHaveLength(2);
-    expect(results.every((r) => r.status === "created")).toBe(true);
+    fs.writeFileSync(path.join(tempDir, "contlify.config.ts"), "// custom", "utf-8");
 
-    // Only blog pages should exist
-    expect(fs.existsSync(path.join(tempDir, "app/blog/page.tsx"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, "app/blog/post/[slug]/page.tsx"))).toBe(true);
+    const results = scaffoldProjectV2({
+      projectRoot: tempDir,
+      framework: "nextjs",
+      dbType: "postgres",
+      overwrite: true,
+    });
 
-    // Other files should NOT exist
-    expect(fs.existsSync(path.join(tempDir, "lib/contlify/adapter.ts"))).toBe(false);
+    const configResult = results.find((r) => r.relativePath === "contlify.config.ts");
+    expect(configResult?.status).toBe("created");
+
+    const afterContent = fs.readFileSync(path.join(tempDir, "contlify.config.ts"), "utf-8");
+    expect(afterContent).toContain("defineConfig");
   });
 
   describe("detectBaseDir & src/ layout support", () => {
-    it("should detect src directory when src/app exists", () => {
-      fs.mkdirSync(path.join(tempDir, "src/app"), { recursive: true });
+    it("should return 'src' when src/app exists", () => {
+      fs.mkdirSync(path.join(tempDir, "src", "app"), { recursive: true });
       expect(detectBaseDir(tempDir)).toBe("src");
     });
 
-    it("should return empty string when src directory does not exist", () => {
+    it("should return 'src' when src/ exists", () => {
+      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+      expect(detectBaseDir(tempDir)).toBe("src");
+    });
+
+    it("should return empty string when src/ does not exist", () => {
       expect(detectBaseDir(tempDir)).toBe("");
     });
 
-    it("should scaffold into src/app and src/lib when src/ exists", () => {
-      fs.mkdirSync(path.join(tempDir, "src/app"), { recursive: true });
+    it("should place route in src/app and keep contlify.config.ts at root when src/ exists", () => {
+      fs.mkdirSync(path.join(tempDir, "src", "app"), { recursive: true });
 
-      const results = scaffoldProject({ projectRoot: tempDir });
+      const results = scaffoldProjectV2({
+        projectRoot: tempDir,
+        framework: "nextjs",
+        dbType: "postgres",
+      });
 
       expect(results.every((r) => r.status === "created")).toBe(true);
-      expect(fs.existsSync(path.join(tempDir, "src/app/blog/page.tsx"))).toBe(true);
-      expect(fs.existsSync(path.join(tempDir, "src/lib/contlify/adapter.ts"))).toBe(true);
-      expect(fs.existsSync(path.join(tempDir, "src/app/api/contlify/[...path]/route.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "contlify.config.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "src/app/api/contlify/v1/[...path]/route.ts"))).toBe(true);
     });
   });
 
   describe("formatScaffoldResults", () => {
     it("should produce human-readable output", () => {
-      const results = scaffoldProject({ projectRoot: tempDir });
+      const results = scaffoldProjectV2({
+        projectRoot: tempDir,
+        framework: "nextjs",
+        dbType: "postgres",
+      });
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("✅ Created");
-      expect(output).toContain("7 created");
+      expect(output).toContain("2 created");
       expect(output).toContain("0 skipped");
       expect(output).toContain("0 errors");
     });
 
     it("should show skipped files in output", () => {
-      scaffoldProject({ projectRoot: tempDir });
-      const results = scaffoldProject({ projectRoot: tempDir, overwrite: false });
+      scaffoldProjectV2({ projectRoot: tempDir, framework: "nextjs", dbType: "postgres" });
+      const results = scaffoldProjectV2({
+        projectRoot: tempDir,
+        framework: "nextjs",
+        dbType: "postgres",
+        overwrite: false,
+      });
       const output = formatScaffoldResults(results);
 
       expect(output).toContain("Skipped");
-      expect(output).toContain("7 skipped");
+      expect(output).toContain("2 skipped");
     });
   });
 });

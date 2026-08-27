@@ -114,7 +114,7 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
     (resultObj.id as string) ??
     postIdOrSlug;
 
-  const finalUrl = (resultObj.post_url as string) ?? (resultObj.url as string) ?? postUrl ?? "";
+  const finalUrl = postUrl || ((resultObj.post_url as string) ?? (resultObj.url as string) ?? "");
 
   const responseBody = {
     status: "success",

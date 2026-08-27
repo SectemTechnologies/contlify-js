@@ -129,7 +129,7 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
     (resultObj.id as string) ??
     `post_${Date.now()}`;
 
-  const finalUrl = (resultObj.post_url as string) ?? (resultObj.url as string) ?? postUrl;
+  const finalUrl = postUrl || ((resultObj.post_url as string) ?? (resultObj.url as string) ?? `/blog/post/${slug}`);
 
   const responseBody = {
     status: "success",

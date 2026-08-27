@@ -1,13 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { scaffoldProject, formatScaffoldResults, detectBaseDir } from "./scaffolder.js";
+import { scaffoldProjectV2 } from "./scaffolder.js";
 import { detectFramework } from "./detector.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
 import type { ContlifyFramework } from "../templates/framework.js";
-import { getScaffoldManifest } from "../templates/index.js";
-
+import type { V2MigrationMode, PostgresDeployment } from "../templates/v2/index.js";
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -34,175 +33,75 @@ const FRAMEWORK_CHOICES: { label: string; value: ContlifyFramework }[] = [
 
 const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
   { label: "PostgreSQL (pg / Neon / Railway / Vercel Postgres)", value: "postgres" },
-  { label: "Supabase", value: "supabase" },
+  { label: "Supabase (JavaScript SDK)", value: "supabase" },
   { label: "Cloudflare D1 (SQLite)", value: "d1" },
   { label: "MongoDB", value: "mongodb" },
 ];
 
-/**
- * Astro / React Router pages import bindContlifyEnv. Postgres and similar treat it as a no-op.
- */
-function withEnvBind(source: string): string {
-  if (source.includes("export function bindContlifyEnv")) return source;
-  return `${source}
-/** Bind Cloudflare request env (D1). No-op for Postgres / Mongo / Supabase. */
-export function bindContlifyEnv(_env?: unknown) {
-  return contlifyAdapter;
-}
-`;
-}
+const MIGRATION_CHOICES: { label: string; value: V2MigrationMode }[] = [
+  { label: "🚀  Automatic — provision schema automatically when the application starts", value: "auto" },
+  { label: "📄  Generate SQL File — generate schema.sql and show how to apply it", value: "sql" },
+  { label: "⏭️   Skip for now — I'll run `npx contlify migrate` later", value: "skip" },
+];
+
+const POSTGRES_HOSTING_CHOICES: { label: string; value: PostgresDeployment }[] = [
+  { label: "Cloudflare Workers / OpenNext (Neon Serverless HTTP Driver — stateless, no socket errors)", value: "cloudflare" },
+  { label: "Node.js / Vercel / Railway / Render / Docker (Standard pg Pool)", value: "node" },
+];
+
+const MONGO_HOSTING_CHOICES: { label: string; value: PostgresDeployment }[] = [
+  { label: "Cloudflare Workers / OpenNext (Edge-optimized serverless connection, timeout protection)", value: "cloudflare" },
+  { label: "Node.js / Vercel / Railway / Render / Docker (Standard persistent connection pool)", value: "node" },
+];
 
 /**
- * Generates the adapter.ts content for the chosen database, host, and site framework.
+ * Returns the npm package to install for the chosen database type.
  */
-function buildAdapterContent(
+function getDbPackage(
   dbType: SupportedDatabaseType,
-  pgTarget: "node" | "cloudflare" = "node",
-  mongoTarget: "node" | "cloudflare" = "node",
-  framework: ContlifyFramework = "nextjs"
-): string {
-  const supabaseUrlEnv =
-    framework === "nextjs"
-      ? "process.env.SUPABASE_URL"
-      : framework === "astro"
-        ? "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL)"
-        : "(process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL)";
-
-
-  const skipNextBuildGuard = framework === "nextjs"
-    ? `if (process.env.NEXT_PHASE === "phase-production-build") return null;\n  `
-    : "";
-
+  postgresDeployment?: PostgresDeployment
+): string | null {
   switch (dbType) {
     case "postgres":
-      if (pgTarget === "cloudflare") {
-        return withEnvBind(`import { neon } from "@neondatabase/serverless";
-import { createPostgresAdapter } from "contlify";
-
-const _sql = neon(process.env.DATABASE_URL!);
-
-const neonHttpClient = {
-  async query<T = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-  ): Promise<{ rows: T[] }> {
-    const rows = await _sql.query(sql, params ?? []);
-    return { rows: rows as unknown as T[] };
-  },
-};
-
-export const contlifyAdapter = createPostgresAdapter(neonHttpClient);
-`);
-      }
-      return withEnvBind(`import { Pool } from "pg";
-import { createPostgresAdapter } from "contlify";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-export const contlifyAdapter = createPostgresAdapter(pool);
-`);
-
+      return postgresDeployment === "node" ? "pg @types/pg" : "@neondatabase/serverless";
     case "supabase":
-      return withEnvBind(`import { createClient } from "@supabase/supabase-js";
-import { createSupabaseAdapter } from "contlify";
-
-const supabase = createClient(
-  ${supabaseUrlEnv}!,
-  process.env.SUPABASE_SECRET_KEY!
-);
-
-export const contlifyAdapter = createSupabaseAdapter(supabase as any);
-`);
-
+      return "@supabase/supabase-js";
     case "d1":
-      if (framework === "nextjs") {
-        return withEnvBind(`import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createD1Adapter } from "contlify";
-
-export const contlifyAdapter = createD1Adapter(async () => {
-  const ctx = await getCloudflareContext();
-  return ctx?.env as any;
-});
-`);
-      }
-      return `import { createD1Adapter } from "contlify";
-
-let _boundEnv: unknown = null;
-
-export function bindContlifyEnv(env?: unknown) {
-  if (env !== undefined) _boundEnv = env;
-  return contlifyAdapter;
+      return "@opennextjs/cloudflare";
+    case "mongodb":
+      return "mongodb";
+  }
 }
 
-export const contlifyAdapter = createD1Adapter(async () => _boundEnv as any);
-`;
+/**
+ * Returns CLI migration instructions for the chosen database type.
+ */
+function getMigrationInstructions(dbType: SupportedDatabaseType, sqlFilePath: string): string {
+  switch (dbType) {
+    case "postgres":
+      return `  Run migration with psql:\n    ${dim(`psql "$DATABASE_URL" -f ${sqlFilePath}`)}\n\n  Or paste in:\n    ${dim("Neon → SQL Console")}\n    ${dim("Railway → Connect → Query")}`;
+
+    case "supabase":
+      return `  Apply in Supabase Dashboard:\n    1. Go to ${dim("https://app.supabase.com")} → Select your project\n    2. Click ${dim("SQL Editor")} → ${dim("New query")}\n    3. Paste the contents of ${dim("schema.sql")} and click ${dim("Run")}`;
+
+    case "d1":
+      return `  Apply via Wrangler CLI:\n    ${dim(`npx wrangler d1 execute <database_name> --file=${sqlFilePath}`)}\n\n  Or for local dev:\n    ${dim(`npx wrangler d1 execute <database_name> --file=${sqlFilePath} --local`)}`;
 
     case "mongodb":
-      if (mongoTarget === "cloudflare") {
-        return withEnvBind(`import { createMongoAdapter } from "contlify";
-
-// Cloudflare Workers: connect fresh per request.
-export const contlifyAdapter = createMongoAdapter(async () => {
-  ${skipNextBuildGuard}const uri = process.env.MONGODB_URI;
-  if (!uri) return null;
-
-  const { MongoClient } = await import("mongodb");
-  const client = new MongoClient(uri, {
-    serverSelectionTimeoutMS: 5000,
-    connectTimeoutMS: 5000,
-  });
-  await client.connect();
-  return client.db(process.env.MONGODB_DB_NAME ?? "contlify");
-});
-`);
-      }
-      return withEnvBind(`import { createMongoAdapter } from "contlify";
-
-let _client: import("mongodb").MongoClient | null = null;
-
-export const contlifyAdapter = createMongoAdapter(async () => {
-  ${skipNextBuildGuard}const uri = process.env.MONGODB_URI;
-  if (!uri) return null;
-
-  const { MongoClient } = await import("mongodb");
-  if (!_client) _client = new MongoClient(uri);
-  await _client.connect().catch(() => {});
-  return _client.db(process.env.MONGODB_DB_NAME ?? "contlify");
-});
-`);
+      return `  MongoDB collections auto-initialize on first document insertion.\n  ${dim("No migration needed — just connect and go!")}`;
   }
 }
 
 /**
  * Returns a .env.local snippet with the relevant DB env vars for the chosen database.
  */
-function buildEnvSnippet(
-  dbType: SupportedDatabaseType,
-  pgTarget: "node" | "cloudflare" = "node",
-  mongoTarget: "node" | "cloudflare" = "node"
-): string {
+function buildEnvSnippet(dbType: SupportedDatabaseType, deployment?: PostgresDeployment): string {
   switch (dbType) {
     case "postgres":
-      if (pgTarget === "cloudflare") {
-        return `# .env.local
-DATABASE_URL=postgresql://user:password@ep-something-pooler.neon.tech/dbname?sslmode=require
-
-# Contlify API Key (set in your CMS dashboard)
-CONTLIFY_API_KEY=your_api_key_here
-
-# ⚠️ For Cloudflare Workers / OpenNext deployment, set secrets via Wrangler:
-# npx wrangler secret put DATABASE_URL
-# npx wrangler secret put CONTLIFY_API_KEY
-#
-# Use the pooler connection string (hostname contains -pooler) for Workers.
-`;
-      }
       return `# .env.local
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
-# Contlify API Key (set in your CMS dashboard)
+# Contlify API Key (keep this secret!)
 CONTLIFY_API_KEY=your_api_key_here
 `;
     case "supabase":
@@ -210,6 +109,7 @@ CONTLIFY_API_KEY=your_api_key_here
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SECRET_KEY=your_service_role_key_here
 
+# Contlify API Key (keep this secret!)
 CONTLIFY_API_KEY=your_api_key_here
 `;
     case "d1":
@@ -223,19 +123,12 @@ CONTLIFY_API_KEY=your_api_key_here
 CONTLIFY_API_KEY=your_api_key_here
 `;
     case "mongodb":
-      if (mongoTarget === "cloudflare") {
-        return `# .env.local
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net
+      if (deployment === "cloudflare") {
+        return `# .env.local / wrangler secret (Standard connection string recommended for Cloudflare):
+MONGODB_URI=mongodb://user:password@host1:27017,host2:27017,host3:27017/?replicaSet=atlas-...&ssl=true&authSource=admin
 MONGODB_DB_NAME=contlify
 
 CONTLIFY_API_KEY=your_api_key_here
-
-# ⚠️ For Cloudflare Workers / OpenNext deployment, set secrets via Wrangler:
-# npx wrangler secret put MONGODB_URI
-# npx wrangler secret put CONTLIFY_API_KEY
-#
-# Note: MongoDB on Cloudflare Workers connects per-request (no persistent pool).
-# Consider Cloudflare D1 or Neon PostgreSQL for lower-latency Workers support.
 `;
       }
       return `# .env.local
@@ -244,22 +137,6 @@ MONGODB_DB_NAME=contlify
 
 CONTLIFY_API_KEY=your_api_key_here
 `;
-  }
-}
-
-/**
- * Returns the npm package to install for the chosen database.
- */
-function getDbPackage(
-  dbType: SupportedDatabaseType,
-  pgTarget: "node" | "cloudflare" = "node",
-  _mongoTarget: "node" | "cloudflare" = "node"
-): string | null {
-  switch (dbType) {
-    case "postgres": return pgTarget === "cloudflare" ? "@neondatabase/serverless" : "pg @types/pg";
-    case "supabase": return "@supabase/supabase-js";
-    case "d1": return null; // bundled with Cloudflare Workers
-    case "mongodb": return "mongodb"; // same package for both node and cloudflare
   }
 }
 
@@ -278,20 +155,25 @@ function patchNextConfig(projectRoot: string, pkg: string): void {
 
   let content = fs.readFileSync(configPath, "utf-8");
 
-  // Already patched
   if (content.includes("serverExternalPackages")) return;
 
-  // Insert serverExternalPackages into the config object
   content = content.replace(
-    /const nextConfig\s*=\s*\{/,
-    `const nextConfig = {\n  serverExternalPackages: ["${pkg}"],`
+    /const nextConfig(?::\s*[^=]+)?\s*=\s*\{/,
+    `const nextConfig: NextConfig = {\n  serverExternalPackages: ["${pkg}"],`
   );
+
+  if (!content.includes("serverExternalPackages")) {
+    content = content.replace(
+      /export default\s*\{/,
+      `export default {\n  serverExternalPackages: ["${pkg}"],`
+    );
+  }
 
   fs.writeFileSync(configPath, content, "utf-8");
 }
 
 /**
- * Patches app/routes.ts in React Router v7 to register Contlify blog and API routes.
+ * Patches app/routes.ts in React Router v7 to register the Contlify API route.
  */
 function patchReactRouterRoutes(projectRoot: string): boolean {
   const routesPaths = [
@@ -305,27 +187,11 @@ function patchReactRouterRoutes(projectRoot: string): boolean {
 
   let content = fs.readFileSync(routesPath, "utf-8");
 
-  const missingRoutes: string[] = [];
-
-  if (!content.includes("routes/blog._index.tsx")) {
-    missingRoutes.push('  route("blog", "routes/blog._index.tsx"),');
-  }
-  if (!content.includes("routes/blog.category.$slug.tsx")) {
-    missingRoutes.push('  route("blog/category/:slug", "routes/blog.category.$slug.tsx"),');
-  }
-  if (!content.includes("routes/blog.post.$slug.tsx")) {
-    missingRoutes.push('  route("blog/post/:slug", "routes/blog.post.$slug.tsx"),');
-  }
-  if (!content.includes("routes/api.contlify.$.ts") && !content.includes("api.contlify")) {
-    missingRoutes.push('  route("api/contlify/*", "routes/api.contlify.$.ts"),');
-  }
-
-  // All 4 routes are already present
-  if (missingRoutes.length === 0) {
+  if (content.includes("api.contlify.$")) {
     return true;
   }
 
-  // Ensure 'route' is imported from @react-router/dev/routes
+  // Ensure 'route' is imported
   if (!content.includes("route,") && !content.includes(", route") && !content.includes("route }") && !content.includes("route\n}")) {
     content = content.replace(
       /import\s*\{\s*([^}]+)\s*\}\s*from\s*["']@react-router\/dev\/routes["']/,
@@ -333,60 +199,27 @@ function patchReactRouterRoutes(projectRoot: string): boolean {
     );
   }
 
-  const routesToInsert = "\n" + missingRoutes.join("\n") + "\n";
+  const routeEntry = `\n  route("api/contlify/*", "routes/api.contlify.$.ts"),\n`;
 
-  // Insert before the closing array bracket
   if (content.includes("] satisfies RouteConfig")) {
     content = content.replace(
       /(\s*)\]\s*satisfies\s*RouteConfig/,
-      `${routesToInsert}$1] satisfies RouteConfig`
+      `${routeEntry}$1] satisfies RouteConfig`
     );
   } else if (content.lastIndexOf("]") !== -1) {
     const lastBracketIndex = content.lastIndexOf("]");
-    content = content.slice(0, lastBracketIndex) + routesToInsert + content.slice(lastBracketIndex);
+    content = content.slice(0, lastBracketIndex) + routeEntry + content.slice(lastBracketIndex);
   }
 
   fs.writeFileSync(routesPath, content, "utf-8");
   return true;
 }
 
-
 /**
- * Returns CLI migration instructions for the chosen database type.
- */
-
-function getMigrationInstructions(dbType: SupportedDatabaseType, sqlFilePath: string): string {
-  switch (dbType) {
-    case "postgres":
-      return `  Run migration with psql:
-    ${dim(`psql $DATABASE_URL -f ${sqlFilePath}`)}
-
-  Or paste the SQL directly in:
-    ${dim("Supabase → SQL Editor")}
-    ${dim("Neon → SQL Console")}
-    ${dim("Railway → Connect → Query")}`;
-
-    case "supabase":
-      return `  Paste the SQL in Supabase SQL Editor:
-    ${dim("https://app.supabase.com → SQL Editor → New Query")}
-    ${dim(`Copy contents of ${sqlFilePath} and run`)}`;
-
-    case "d1":
-      return `  Apply via Wrangler CLI:
-    ${dim(`npx wrangler d1 execute <DB_NAME> --file=${sqlFilePath}`)}
-
-  Or for local dev:
-    ${dim(`npx wrangler d1 execute <DB_NAME> --file=${sqlFilePath} --local`)}`;
-
-    case "mongodb":
-      return `  MongoDB collections auto-initialize on first document insertion.
-  ${dim("No migration needed — just connect and go!")}`;
-  }
-}
-
-/**
- * `contlify init` — interactive project setup command.
- * Scaffolds the blog pages, configures the adapter, and outputs migration instructions.
+ * `contlify init` — interactive v2 project setup command.
+ * Generates only:
+ *   1. contlify.config.ts (project root)
+ *   2. Framework-specific thin gateway route
  */
 export async function runInit(projectRoot: string, flags: { overwrite?: boolean } = {}): Promise<void> {
   log("");
@@ -414,46 +247,50 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     framework = await select("  Which site framework are you using?", FRAMEWORK_CHOICES);
   }
 
+  // Step 2: Select database
   const dbType = await select("  Which database are you using?", DB_CHOICES);
 
-  let pgTarget: "node" | "cloudflare" = "node";
-
+  // Step 2b: If postgres or mongodb, ask deployment target
+  let postgresDeployment: PostgresDeployment = "cloudflare";
   if (dbType === "postgres") {
-    pgTarget = await select("  Where is your project hosted / deployed?", [
-      { label: "Node.js / Vercel / Railway / Render / Docker (Standard pg)", value: "node" },
-      { label: "Cloudflare Workers / OpenNext (Neon Serverless Driver)", value: "cloudflare" },
-    ]);
+    log("");
+    info("  🌐 Where is your project hosted / deployed?");
+    postgresDeployment = await select("  Deployment target", POSTGRES_HOSTING_CHOICES);
+  } else if (dbType === "mongodb") {
+    log("");
+    info("  🌐 Where is your project hosted / deployed?");
+    postgresDeployment = await select("  Deployment target", MONGO_HOSTING_CHOICES);
   }
 
-  let mongoTarget: "node" | "cloudflare" = "node";
-  if (dbType === "mongodb") {
-    mongoTarget = await select("  Where is your project hosted / deployed?", [
-      { label: "Node.js / Vercel / Railway / Render / Docker", value: "node" },
-      { label: "Cloudflare Workers / OpenNext", value: "cloudflare" },
-    ]);
-    if (mongoTarget === "cloudflare") {
-      log("");
-      warn("  ⚠️  MongoDB on Cloudflare Workers connects per-request (no persistent pool).");
-      warn("     Consider Cloudflare D1 or Neon PostgreSQL for better Workers performance.");
-      log("");
-    }
+  // Step 3: Database setup wizard
+  let migrationMode: V2MigrationMode = "sql";
+  if (dbType === "supabase") {
+    info("  ℹ️  Supabase uses schema.sql (one-time copy & paste into the Supabase SQL Editor).");
+    migrationMode = "sql";
+  } else if (dbType === "postgres" || dbType === "d1") {
+    log("");
+    info("  🗄️  How would you like to set up the Contlify database schema?");
+    migrationMode = await select("  Database setup", MIGRATION_CHOICES);
+  } else {
+    migrationMode = "skip";
   }
 
-  const baseDir = detectBaseDir(projectRoot);
-  const prefix = (rel: string) => (framework === "nextjs" && baseDir ? `${baseDir}/${rel}` : rel);
-
-  // Step 2: Confirm scaffold
+  // Step 4: Confirm scaffold
   log("");
   info(`  ℹ️  The following files will be generated in your ${framework} project:`);
-  const dbLabel = dbType === "postgres"
-    ? `postgres - ${pgTarget}`
-    : dbType === "mongodb"
-      ? `mongodb - ${mongoTarget}`
-      : dbType;
-  for (const entry of getScaffoldManifest(framework)) {
-    log(`     ${dim(prefix(entry.relativePath))} — ${entry.description}`);
+  const dbLabel = DB_CHOICES.find(c => c.value === dbType)?.label ?? dbType;
+  log(`     ${dim("contlify.config.ts")} — Contlify declarative configuration (${dbLabel})`);
+  if (dbType === "supabase" || migrationMode === "sql") {
+    log(`     ${dim("schema.sql")} — Database tables schema`);
   }
-  log(`     ${dim("(adapter will be written for " + dbLabel + ")")}`);
+
+  if (framework === "nextjs") {
+    log(`     ${dim("app/api/contlify/v1/[...path]/route.ts")} — Next.js App Router gateway`);
+  } else if (framework === "astro") {
+    log(`     ${dim("src/pages/api/contlify/v1/[...path].ts")} — Astro API endpoint gateway`);
+  } else {
+    log(`     ${dim("app/routes/api.contlify.$.ts")} — React Router v7 gateway`);
+  }
   log("");
 
   const shouldProceed = await confirm("  Proceed with setup?", true);
@@ -462,8 +299,8 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     return;
   }
 
-  // Step 3: Install the required database driver
-  const dbPkg = getDbPackage(dbType, pgTarget, mongoTarget);
+  // Step 5: Install the required database driver
+  const dbPkg = getDbPackage(dbType, postgresDeployment);
   if (dbPkg) {
     log("");
     info(`  📦 Installing ${dbPkg}...`);
@@ -475,75 +312,123 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     }
   }
 
-  // Step 4: Scaffold files
+  // Step 6: Scaffold files (v2 minimal: config + route only)
   log("");
   info("  📁 Scaffolding files...");
 
-  const results = scaffoldProject({
+  const results = scaffoldProjectV2({
     projectRoot,
     overwrite: flags.overwrite ?? false,
     framework,
+    dbType,
+    migrationMode,
+    postgresDeployment,
   });
 
-  const adapterRel =
-    framework === "nextjs"
-      ? prefix("lib/contlify/adapter.ts")
-      : framework === "react-router"
-        ? "app/lib/contlify/adapter.ts"
-        : "src/lib/contlify/adapter.ts";
-  const adapterPath = path.join(projectRoot, adapterRel);
-  const adapterContent = buildAdapterContent(dbType, pgTarget, mongoTarget, framework);
-  fs.mkdirSync(path.dirname(adapterPath), { recursive: true });
-  fs.writeFileSync(adapterPath, adapterContent, "utf-8");
+  for (const result of results) {
+    switch (result.status) {
+      case "created":
+        log(`  ✅ Created ${result.relativePath}`);
+        break;
+      case "skipped":
+        log(`  ⏭️  Skipped ${result.relativePath} (already exists — use --overwrite to replace)`);
+        break;
+      case "error":
+        log(`  ❌ Error   ${result.relativePath}: ${result.message}`);
+        break;
+    }
+  }
 
-  log(formatScaffoldResults(results));
-
-  // Patch next.config.mjs only for Next.js + MongoDB
+  // Step 7: Framework-specific patches
   if (framework === "nextjs" && dbType === "mongodb") {
     patchNextConfig(projectRoot, "mongodb");
     success("  ✅ next.config.mjs patched with serverExternalPackages.");
   }
 
-  // Patch app/routes.ts for React Router v7
   if (framework === "react-router") {
     const patched = patchReactRouterRoutes(projectRoot);
     if (patched) {
-      success("  ✅ app/routes.ts registered with blog and Contlify API routes.");
+      success("  ✅ app/routes.ts registered with Contlify API route.");
     }
   }
 
-
-  // Step 5: Write migration SQL file
+  // Step 8: Handle migration mode
   log("");
-  if (dbType !== "mongodb") {
-    info("  📄 Generating migration SQL...");
-    const sqlContent = getMigrationSql(dbType);
-    const sqlFileName = `contlify-${dbType}.sql`;
-    const sqlFilePath = path.join(projectRoot, sqlFileName);
-    fs.writeFileSync(sqlFilePath, sqlContent, "utf-8");
-    success(`  ✅ Migration file written: ${sqlFileName}`);
-    log("");
-    info("  📌 Apply the migration to your database:");
-    log(getMigrationInstructions(dbType, sqlFileName));
+  if (migrationMode === "auto") {
+    info("  🚀 Auto-migration enabled.");
+    log(`  ${dim("contlify.config.ts includes autoMigrate: true")}`);
+    warn("  ⚠️  Note: Runtime auto-migration will provision tables on startup once configured.");
+    warn("     For manual execution, run: npx contlify migrate");
+  } else if (migrationMode === "sql") {
+    if (dbType !== "mongodb") {
+      info("  📄 Generating schema.sql...");
+      const sqlContent = getMigrationSql(dbType);
+      const sqlFileName = "schema.sql";
+      const sqlFilePath = path.join(projectRoot, sqlFileName);
+      fs.writeFileSync(sqlFilePath, sqlContent, "utf-8");
+      success(`  ✅ Schema file written: ${sqlFileName}`);
+      log("");
+      info("  📌 Apply the schema to your database:");
+      log(getMigrationInstructions(dbType, sqlFilePath));
+    } else {
+      info("  ℹ️  MongoDB collections auto-initialize on first insert. No schema needed.");
+    }
+  } else {
+    info("  Database setup skipped.");
+    log(`  ${dim("You can run:  npx contlify migrate  at any time to set up the database.")}`);
   }
 
-  // Step 6: Show env snippet
+  // Step 9: Show env snippet
   log("");
   info("  🔑 Add these to your .env.local:");
   log("");
-  log(buildEnvSnippet(dbType, pgTarget, mongoTarget).split("\n").map(l => `  ${dim(l)}`).join("\n"));
+  log(buildEnvSnippet(dbType, postgresDeployment).split("\n").map(l => `  ${dim(l)}`).join("\n"));
 
   // Done!
   log("");
   success("  ✅ Contlify setup complete!");
   log("");
   log(bold("  Next steps:"));
-  log(`  1. ${dbType !== "mongodb" ? "Run the migration SQL on your database" : "Connect your MongoDB URI"}`);
-  log("  2. Add env variables to .env.local");
-  log("  3. Set your CONTLIFY_API_KEY in your Contlify dashboard");
-  log("  4. Run: npm run dev");
-  log("  5. Visit /blog to see your blog listing page");
-
+  if (dbType === "supabase") {
+    log("  1. Open Supabase Dashboard → SQL Editor → New query");
+    log("  2. Paste and run schema.sql to create tables");
+    log("  3. Add SUPABASE_URL and SUPABASE_SECRET_KEY to .env.local");
+    log("  4. Run: npm run dev");
+  } else if (dbType === "mongodb") {
+    if (postgresDeployment === "cloudflare") {
+      log("  1. Add your Standard (non-SRV) MongoDB URI to secrets / .env.local:");
+      log(`  ${dim("   MONGODB_URI=mongodb://user:password@host1:27017,host2:27017/?replicaSet=atlas-...")}`);
+      log(`  ${dim("   MONGODB_DB_NAME=contlify")}`);
+      log(`  ${dim("   CONTLIFY_API_KEY=your_secret_api_key")}`);
+      log("");
+      warn("  ⚠️  Important for Cloudflare Workers:");
+      log(`  ${dim("   → Cloudflare Workers cannot resolve mongodb+srv:// DNS SRV records.")}`);
+      log(`  ${dim("   → Use the Standard connection string from MongoDB Atlas:")}`);
+      log(`  ${dim("     Atlas → Connect → Drivers → toggle 'Standard connection string'")}`);
+      log(`  ${dim("   → Run: npx wrangler secret put MONGODB_URI")}`);
+      log("");
+      log("  2. Collections are created automatically on first insert — no schema needed.");
+      log("  3. Run: npm run dev");
+    } else {
+      log("  1. Add your MongoDB URI to .env.local:");
+      log(`  ${dim("   MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net")}`);
+      log(`  ${dim("   MONGODB_DB_NAME=contlify")}`);
+      log(`  ${dim("   CONTLIFY_API_KEY=your_secret_api_key")}`);
+      log("");
+      log("  2. Collections are created automatically on first insert — no schema needed.");
+      log("  3. Run: npm run dev");
+    }
+  } else if (migrationMode !== "auto") {
+    log("  1. Apply the schema to your database");
+    log("  2. Add env variables to .env.local");
+    log("  3. Run: npm run dev");
+  } else {
+    log("  1. Add env variables to .env.local");
+    log("  2. Run: npm run dev (tables are created automatically on cold start!)");
+  }
+  log("");
+  log(bold("  How to use Contlify in your pages:"));
+  log(`  ${dim('import { getAllPosts, getPostBySlug, getCategories } from "contlify";')}`);
   log("");
   log(dim("  Docs: https://github.com/SectemTechnologies/Next.js-Package#readme"));
   log("");
