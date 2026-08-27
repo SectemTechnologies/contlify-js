@@ -49,7 +49,7 @@ curl -X GET "https://yourwebsite.com/api/contlify/validate" \
   "success": true,
   "data": {
     "valid": true,
-    "version": "1.0.0",
+    "version": "0.1.0",
     "status": "healthy",
     "adapterConnected": true,
     "capabilities": {

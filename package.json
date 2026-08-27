@@ -1,6 +1,6 @@
 {
   "name": "contlify",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Standardized blog publishing engine and database adapter API framework for Next.js websites",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -16,23 +16,25 @@
     "dist"
   ],
   "bin": {
-    "contlify": "./dist/bin/contlify.mjs"
+    "contlify": "./dist/bin/contlify.js"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "cli": "node dist/bin/contlify.mjs"
+    "cli": "node dist/bin/contlify.js",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SectemTechnologies/Next.js-Package.git"
+    "url": "git+https://github.com/SectemTechnologies/contlify-js.git"
   },
   "bugs": {
-    "url": "https://github.com/SectemTechnologies/Next.js-Package/issues"
+    "url": "https://github.com/SectemTechnologies/contlify-js/issues"
   },
-  "homepage": "https://github.com/SectemTechnologies/Next.js-Package#readme",
+  "homepage": "https://github.com/SectemTechnologies/contlify-js#readme",
   "keywords": [
     "contlify",
     "cms",

@@ -12,10 +12,10 @@ export default defineConfig([
     minify: false,
     treeshake: false,
   },
-  // CLI binary
+  // CLI binary — CJS .js so npm 11 accepts the bin field (.mjs is stripped on publish)
   {
     entry: { contlify: "bin/contlify.ts" },
-    format: ["esm"],
+    format: ["cjs"],
     dts: false,
     splitting: false,
     sourcemap: false,
