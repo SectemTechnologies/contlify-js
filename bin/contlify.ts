@@ -23,7 +23,7 @@ const COLORS = {
 
 function getVersion(): string {
   try {
-    // When running from dist/bin/contlify.mjs, package.json is two levels up
+    // When running from dist/bin/contlify.js, package.json is two levels up
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const pkgPath = path.join(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { version: string };
