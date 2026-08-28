@@ -3,7 +3,7 @@ import type { AuthStrategyContract, AuthResult } from "./auth.interface.js";
 
 /**
  * Standard API Key authentication strategy implementation for Contlify.
- * Compares incoming headers (X-Truecmo-Key, X-Api-Key, Authorization) against configured API key.
+ * Compares incoming headers (X-Contlify-Key, X-Truecmo-Key, X-Api-Key, Authorization) against configured API key.
  */
 export class ApiKeyAuthStrategy implements AuthStrategyContract {
   /**
@@ -19,19 +19,25 @@ export class ApiKeyAuthStrategy implements AuthStrategyContract {
       };
     }
 
-    // 1. Primary header: X-Truecmo-Key
+    // 1. Primary v2 header: X-Contlify-Key
+    const contlifyKey = requestContext.getHeader("x-contlify-key");
+    if (contlifyKey && contlifyKey.trim() === keyToMatch) {
+      return { authenticated: true, publisherId: "contlify" };
+    }
+
+    // 2. Legacy v1 header: X-Truecmo-Key
     const truecmoKey = requestContext.getHeader("x-truecmo-key");
     if (truecmoKey && truecmoKey.trim() === keyToMatch) {
       return { authenticated: true, publisherId: "truecmo" };
     }
 
-    // 2. Fallback header: x-api-key
+    // 3. Fallback header: x-api-key
     const apiKeyHeader = requestContext.getHeader("x-api-key");
     if (apiKeyHeader && apiKeyHeader.trim() === keyToMatch) {
       return { authenticated: true, publisherId: "api-key" };
     }
 
-    // 3. Fallback header: Authorization: Bearer <key>
+    // 4. Fallback header: Authorization: Bearer <key>
     const authHeader = requestContext.getHeader("authorization");
     if (authHeader) {
       const parts = authHeader.split(" ");
@@ -40,11 +46,11 @@ export class ApiKeyAuthStrategy implements AuthStrategyContract {
       }
     }
 
-    const hasAnyHeader = Boolean(truecmoKey || apiKeyHeader || authHeader);
+    const hasAnyHeader = Boolean(contlifyKey || truecmoKey || apiKeyHeader || authHeader);
 
     return {
       authenticated: false,
-      reason: hasAnyHeader ? "Invalid API key provided" : "Missing API key in request headers (X-Truecmo-Key required)",
+      reason: hasAnyHeader ? "Invalid API key provided" : "Missing API key in request headers (X-Contlify-Key required)",
     };
   }
 }

@@ -1,5 +1,6 @@
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { AdapterError } from "../errors/adapter-error.js";
+import { extractImageUrl } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
 
 /**
@@ -39,63 +40,52 @@ export type MongoDbProvider =
  */
 export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter {
   async function getDb(): Promise<MongoDbLike | null> {
-    try {
-      let instance: unknown;
-      if (typeof dbProvider === "function") {
-        instance = await dbProvider();
-      } else {
-        instance = dbProvider;
-      }
+    let instance: unknown;
+    if (typeof dbProvider === "function") {
+      // Intentional nulls (build-time skip, missing env var) return null silently.
+      // Real errors (bad URI, auth failure, topology closed) propagate so the caller
+      // sees the actual cause instead of the generic "not available" message.
+      instance = await dbProvider();
+    } else {
+      instance = dbProvider;
+    }
 
-      if (!instance || typeof instance !== "object") {
-        return null;
-      }
-
-      return instance as MongoDbLike;
-    } catch {
+    if (instance === null || instance === undefined) {
       return null;
     }
+
+    if (typeof instance !== "object") {
+      return null;
+    }
+
+    return instance as MongoDbLike;
   }
 
-  async function ensureCol(db: MongoDbLike, colName: string): Promise<void> {
-    try {
-      const dbObj = db as unknown as { listCollections?: (filter: { name: string }) => { toArray: () => Promise<unknown[]> }; createCollection?: (name: string) => Promise<unknown> };
-      if (typeof dbObj.listCollections === "function") {
-        const collections = await dbObj.listCollections({ name: colName }).toArray();
-        if (collections.length === 0 && typeof dbObj.createCollection === "function") {
-          await dbObj.createCollection(colName);
-        }
-      }
-    } catch {
-      // Safely ignore if user lacks listCollections/createCollection permissions or collection already exists
-    }
-  }
+  // NOTE: We do NOT call ensureCol / listCollections before every access.
+  // MongoDB Atlas creates collections automatically on the first insertOne/updateOne.
+  // Calling listCollections per-request adds an unnecessary extra round-trip to Atlas.
 
   async function getPostsCol(): Promise<MongoCollectionLike<Record<string, unknown>> | null> {
     const db = await getDb();
     if (!db) return null;
-    await ensureCol(db, "contlify_posts");
     return db.collection<Record<string, unknown>>("contlify_posts") as MongoCollectionLike<Record<string, unknown>>;
   }
 
   async function getAuthorsCol(): Promise<MongoCollectionLike<Record<string, unknown>> | null> {
     const db = await getDb();
     if (!db) return null;
-    await ensureCol(db, "contlify_authors");
     return db.collection<Record<string, unknown>>("contlify_authors") as MongoCollectionLike<Record<string, unknown>>;
   }
 
   async function getCategoriesCol(): Promise<MongoCollectionLike<Record<string, unknown>> | null> {
     const db = await getDb();
     if (!db) return null;
-    await ensureCol(db, "contlify_categories");
     return db.collection<Record<string, unknown>>("contlify_categories") as MongoCollectionLike<Record<string, unknown>>;
   }
 
   async function getTagsCol(): Promise<MongoCollectionLike<Record<string, unknown>> | null> {
     const db = await getDb();
     if (!db) return null;
-    await ensureCol(db, "contlify_tags");
     return db.collection<Record<string, unknown>>("contlify_tags") as MongoCollectionLike<Record<string, unknown>>;
   }
 
@@ -162,7 +152,11 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       try {
         const posts = await getPostsCol();
         if (!posts) return false;
-        await posts.findOne({});
+        const findPromise = (posts as any).findOne ? (posts as any).findOne({}) : Promise.resolve(null);
+        await Promise.race([
+          findPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("MongoDB ping timeout")), 3000)),
+        ]);
         return true;
       } catch {
         return false;
@@ -223,7 +217,16 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         content: payload.content,
         contentType: payload.contentType ?? "markdown",
         excerpt: payload.excerpt,
-        coverImage: (payload.featured_image as string | undefined) ?? payload.coverImage,
+        coverImage: extractImageUrl(
+          payload.coverImage ??
+          payload.cover_image ??
+          payload.featured_image ??
+          payload.featuredImage ??
+          payload.image ??
+          payload.imageUrl ??
+          payload.image_url ??
+          payload.thumbnail
+        ) ?? undefined,
         status: payload.status ?? "published",
         author: authorDoc,
         categories: categoriesDocs,
@@ -241,9 +244,10 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       const categoriesCol = await getCategoriesCol();
       if (categoriesCol && categoriesDocs.length > 0) {
         for (const cat of categoriesDocs) {
+          const catCoverImg = extractImageUrl((cat as any).coverImage ?? (cat as any).cover_image ?? (cat as any).image ?? (cat as any).imageUrl);
           await categoriesCol.updateOne(
             { slug: cat.slug },
-            { $set: { id: cat.id, name: cat.name, slug: cat.slug, updatedAt: now } },
+            { $set: { id: cat.id, name: cat.name, slug: cat.slug, ...(catCoverImg ? { coverImage: catCoverImg } : {}), updatedAt: now } },
             { upsert: true }
           );
         }
@@ -282,6 +286,21 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       if (payload.content) update.content = payload.content;
       if (payload.status) update.status = payload.status;
       if (payload.excerpt) update.excerpt = payload.excerpt;
+      
+      const coverImg = extractImageUrl(
+        payload.coverImage ??
+        payload.cover_image ??
+        payload.featured_image ??
+        payload.featuredImage ??
+        payload.image ??
+        payload.imageUrl ??
+        payload.image_url ??
+        payload.thumbnail
+      );
+      if (coverImg !== null || payload.coverImage !== undefined || payload.cover_image !== undefined || payload.featured_image !== undefined) {
+        update.coverImage = coverImg ?? undefined;
+      }
+
       if (payload.custom_slug ?? payload.slug) {
         update.slug = slugify((payload.custom_slug ?? payload.slug) as string);
       }
@@ -462,18 +481,21 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
 
     async getCategories(): Promise<Category[]> {
       try {
-        const categories = await getCategoriesCol();
-        const posts = await getPostsCol();
+        // Single aggregation pipeline: fetch all categories and join the latest cover image
+        // from the posts collection in ONE round-trip instead of N per-category queries.
+        const db = await getDb();
+        if (!db) return [];
 
-        let baseCategories: Category[] = [];
-        if (categories) {
-          const docs = await categories.find({}).sort({ name: 1 }).skip(0).limit(1000).toArray();
-          baseCategories = docs.map(docToCategory);
-        }
+        const categoriesCol = db.collection<Record<string, unknown>>("contlify_categories") as MongoCollectionLike<Record<string, unknown>>;
+        const postsCol = db.collection<Record<string, unknown>>("contlify_posts") as MongoCollectionLike<Record<string, unknown>>;
 
-        // Fallback: If contlify_categories collection is empty, aggregate categories directly from posts collection
-        if (baseCategories.length === 0 && posts) {
-          const postDocs = await posts.find({}).sort({ publishedAt: -1 }).skip(0).limit(1000).toArray();
+        // Try to get categories from the dedicated collection first
+        const catDocs = await categoriesCol.find({}).sort({ name: 1 }).skip(0).limit(1000).toArray();
+        let baseCategories: Category[] = catDocs.map(docToCategory);
+
+        // Fallback: aggregate categories embedded in posts if the collection is empty
+        if (baseCategories.length === 0) {
+          const postDocs = await postsCol.find({}).sort({ publishedAt: -1 }).skip(0).limit(1000).toArray();
           const categoryMap = new Map<string, Category>();
           for (const postDoc of postDocs) {
             const rawCats = (postDoc.categories ?? []) as Array<{ id?: string; name?: string; slug?: string }>;
@@ -489,28 +511,46 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
             }
           }
           baseCategories = Array.from(categoryMap.values());
+          return baseCategories;
         }
 
-        if (!posts) return baseCategories;
+        // For categories that are missing a cover image, resolve them in a SINGLE query
+        // by aggregating the latest post cover per category slug — not N separate queries.
+        const slugsNeedingCover = baseCategories
+          .filter((c) => !c.coverImage)
+          .map((c) => c.slug);
 
-        const results = await Promise.all(
-          baseCategories.map(async (cat) => {
-            if (cat.coverImage) return cat;
-            try {
-              const latestPost = await posts
-                .find({ "categories.slug": cat.slug, coverImage: { $exists: true, $ne: null } })
-                .sort({ publishedAt: -1 })
-                .skip(0)
-                .limit(1)
-                .toArray();
-              const coverImg = latestPost[0]?.coverImage ? String(latestPost[0].coverImage) : undefined;
-              return { ...cat, coverImage: coverImg };
-            } catch {
-              return cat;
+        if (slugsNeedingCover.length > 0) {
+          // One query: find the latest post with a coverImage for each of the slugs
+          const coverPosts = await postsCol
+            .find({
+              "categories.slug": { $in: slugsNeedingCover } as unknown as Record<string, unknown>,
+              coverImage: { $exists: true, $ne: null } as unknown as Record<string, unknown>,
+            } as Record<string, unknown>)
+            .sort({ publishedAt: -1 })
+            .skip(0)
+            .limit(1000)
+            .toArray();
+
+          // Build a map: categorySlug → first cover image found
+          const coverMap = new Map<string, string>();
+          for (const post of coverPosts) {
+            const cats = (post.categories ?? []) as Array<{ slug?: string }>;
+            const img = post.coverImage ? String(post.coverImage) : undefined;
+            if (!img) continue;
+            for (const cat of cats) {
+              if (cat.slug && !coverMap.has(cat.slug)) {
+                coverMap.set(cat.slug, img);
+              }
             }
-          })
-        );
-        return results;
+          }
+
+          baseCategories = baseCategories.map((cat) =>
+            cat.coverImage ? cat : { ...cat, coverImage: coverMap.get(cat.slug) }
+          );
+        }
+
+        return baseCategories;
       } catch {
         return [];
       }
@@ -528,6 +568,9 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       if (payload.name !== undefined) updateData.name = payload.name;
       if (payload.slug !== undefined) updateData.slug = payload.slug;
       if (payload.description !== undefined) updateData.description = payload.description;
+      if (payload.coverImage !== undefined || (payload as any).cover_image !== undefined) {
+        updateData.coverImage = extractImageUrl(payload.coverImage ?? (payload as any).cover_image) ?? undefined;
+      }
 
       const filter = { $or: [{ id: idOrSlug }, { slug: idOrSlug }] };
       if (Object.keys(updateData).length > 0) {

@@ -1,11 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getScaffoldManifest, type ScaffoldFileEntry } from "../templates/index.js";
+import { getV2ScaffoldManifest, type ScaffoldFileEntry, type V2ScaffoldOptions, type SupabaseConnectionMode } from "../templates/index.js";
 import type { ContlifyFramework } from "../templates/framework.js";
+import type { SupportedDatabaseType } from "../migrations/index.js";
+import type { PostgresDeployment } from "../templates/index.js";
 
-/**
- * Result of scaffolding a single file.
- */
 export interface ScaffoldFileResult {
   relativePath: string;
   description: string;
@@ -13,58 +12,41 @@ export interface ScaffoldFileResult {
   message?: string;
 }
 
-/**
- * Options for the scaffold operation.
- */
-export interface ScaffoldOptions {
-  /** Absolute path to the user's project root directory. */
+export interface ScaffoldV2Options {
   projectRoot: string;
-  /** If true, overwrite existing files. Default: false. */
   overwrite?: boolean;
-  /** If provided, only scaffold files whose relativePath matches one of these entries. */
-  only?: string[];
-  /** Target site framework. Defaults to Next.js (existing behaviour). */
-  framework?: ContlifyFramework;
+  framework: ContlifyFramework;
+  dbType: SupportedDatabaseType;
+  migrationMode?: V2ScaffoldOptions["migrationMode"];
+  postgresDeployment?: PostgresDeployment;
+  supabaseMode?: SupabaseConnectionMode;
 }
 
-/**
- * Detects whether the user's project uses a `src/` directory layout.
- * Returns `"src"` if `src/app` or `src/` exists, or `""` if not.
- * Only applied for Next.js; Astro / React Router manifests already include `src/`.
- */
+export type ScaffoldOptions = ScaffoldV2Options;
+
 export function detectBaseDir(projectRoot: string): string {
   const hasSrcApp = fs.existsSync(path.join(projectRoot, "src", "app"));
   const hasSrcDir = fs.existsSync(path.join(projectRoot, "src"));
   return hasSrcApp || hasSrcDir ? "src" : "";
 }
 
-/**
- * Next.js may live under `src/app`; Astro and React Router v4 paths are already final.
- */
 function resolveTargetPath(framework: ContlifyFramework, projectRoot: string, relativePath: string): string {
-  if (framework !== "nextjs") {
+  if (framework !== "nextjs" || relativePath === "contlify.config.ts") {
     return relativePath;
   }
   const baseDir = detectBaseDir(projectRoot);
   return baseDir ? `${baseDir}/${relativePath}` : relativePath;
 }
 
-/**
- * Scaffolds contlify template files into the user's project directory.
- *
- * Creates directories as needed. Skips existing files unless `overwrite` is true.
- * Returns a report of each file's status.
- */
-export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] {
-  const { projectRoot, overwrite = false, only, framework = "nextjs" } = options;
-  const manifest = getScaffoldManifest(framework);
-  const filesToScaffold: ScaffoldFileEntry[] = only
-    ? manifest.filter((entry) => only.includes(entry.relativePath))
-    : manifest;
-
+function writeEntries(
+  entries: ScaffoldFileEntry[],
+  projectRoot: string,
+  framework: ContlifyFramework,
+  overwrite: boolean
+): ScaffoldFileResult[] {
   const results: ScaffoldFileResult[] = [];
 
-  for (const entry of filesToScaffold) {
+  for (const entry of entries) {
     const targetRelativePath = resolveTargetPath(framework, projectRoot, entry.relativePath);
     const absolutePath = path.join(projectRoot, targetRelativePath);
     const dir = path.dirname(absolutePath);
@@ -103,32 +85,26 @@ export function scaffoldProject(options: ScaffoldOptions): ScaffoldFileResult[] 
   return results;
 }
 
-/**
- * Returns a human-readable summary string from scaffold results.
- */
+export function scaffoldProjectV2(options: ScaffoldV2Options): ScaffoldFileResult[] {
+  const { projectRoot, overwrite = false, framework, dbType, migrationMode, postgresDeployment, supabaseMode } = options;
+  const manifest = getV2ScaffoldManifest(framework, { dbType, migrationMode, postgresDeployment, supabaseMode });
+  return writeEntries(manifest, projectRoot, framework, overwrite);
+}
+
+export const scaffoldProject = scaffoldProjectV2;
+
 export function formatScaffoldResults(results: ScaffoldFileResult[]): string {
   const lines: string[] = [];
-
   for (const result of results) {
     switch (result.status) {
-      case "created":
-        lines.push(`  ✅ Created ${result.relativePath}`);
-        break;
-      case "skipped":
-        lines.push(`  ⏭️  Skipped ${result.relativePath} (already exists)`);
-        break;
-      case "error":
-        lines.push(`  ❌ Error   ${result.relativePath}: ${result.message}`);
-        break;
+      case "created": lines.push(`  ✅ Created ${result.relativePath}`); break;
+      case "skipped": lines.push(`  ⏭️  Skipped ${result.relativePath} (already exists)`); break;
+      case "error": lines.push(`  ❌ Error   ${result.relativePath}: ${result.message}`); break;
     }
   }
-
   const created = results.filter((r) => r.status === "created").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
   const errors = results.filter((r) => r.status === "error").length;
-
-  lines.push("");
-  lines.push(`  ${created} created, ${skipped} skipped, ${errors} errors`);
-
+  lines.push(`\n  ${created} created, ${skipped} skipped, ${errors} errors`);
   return lines.join("\n");
 }

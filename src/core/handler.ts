@@ -24,7 +24,7 @@ export type ContlifyHandler = (req: Request | unknown) => Promise<Response>;
  * @param userConfig Configuration options including API key, adapter, and URL generator.
  * @returns Web API standard handler function.
  */
-export function createContlifyHandler(userConfig: ContlifyConfig = {}): ContlifyHandler {
+export function createContlifyHandler(userConfig?: ContlifyConfig): ContlifyHandler {
   const config = resolveConfig(userConfig);
   const router = new Router();
 
@@ -39,12 +39,19 @@ export function createContlifyHandler(userConfig: ContlifyConfig = {}): Contlify
   // Phase 3 Complete HTTP Route Registration Matrix
   // ------------------------------------------------------------------
 
-  // 1. Health & Configuration Validation: GET /validate
+  // 1. Health & Configuration Validation: GET /validate & GET /health
   router.register(
     "GET",
     "/validate",
     protectedRoute(handleValidate),
     "Validates Contlify configuration, API key authentication, and database adapter health"
+  );
+
+  router.register(
+    "GET",
+    "/health",
+    protectedRoute(handleValidate),
+    "Health check verifying Contlify configuration and database connection"
   );
 
   // 2. Publish Post: POST /posts (Phase 2 integration preserved)

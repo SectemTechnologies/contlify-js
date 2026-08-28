@@ -28,6 +28,10 @@ describe("Pre-Built Adapters & Migrations Suite (Phase 2)", () => {
     it("should return postgres schema for 'supabase'", () => {
       const sql = getMigrationSql("supabase");
       expect(sql).toBe(postgresSchema);
+      expect(sql).toContain("CREATE TABLE IF NOT EXISTS contlify_categories");
+      expect(sql).toContain("cover_image TEXT");
+      expect(sql).toContain("CREATE TABLE IF NOT EXISTS contlify_post_categories");
+      expect(sql).toContain("CREATE TABLE IF NOT EXISTS contlify_post_tags");
     });
 
     it("should return D1 schema for 'd1'", () => {
@@ -173,6 +177,35 @@ describe("Pre-Built Adapters & Migrations Suite (Phase 2)", () => {
       expect(posts).toHaveLength(1);
       expect(posts[0]?.title).toBe("D1 Post");
     });
+
+    it("should ignore Cloudflare Fetcher/RPC service bindings and select valid D1 binding", async () => {
+      const rpcFetcher = {
+        fetch: vi.fn(),
+        prepare: vi.fn(), // RPC proxies have stubs for all method names
+      };
+
+      const realD1 = {
+        prepare: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({ alive: 1 }),
+          run: vi.fn().mockResolvedValue({ success: true }),
+        }),
+        batch: vi.fn(),
+        exec: vi.fn(),
+      };
+
+      const mockEnv = {
+        ASSETS: rpcFetcher,
+        WORKER_SELF_REFERENCE: rpcFetcher,
+        IMAGES: rpcFetcher,
+        d1_db_test: realD1,
+      };
+
+      const adapter = createD1Adapter(mockEnv);
+      const alive = await adapter.ping!();
+      expect(alive).toBe(true);
+      expect(realD1.prepare).toHaveBeenCalledWith("SELECT 1 AS alive");
+      expect(rpcFetcher.prepare).not.toHaveBeenCalled();
+    });
   });
 
   describe("createSupabaseAdapter", () => {
@@ -196,6 +229,96 @@ describe("Pre-Built Adapters & Migrations Suite (Phase 2)", () => {
       expect(res.action).toBe("created");
       expect(res.slug).toBe("supabase-post");
       expect(mockSupabase.from).toHaveBeenCalledWith("contlify_posts");
+    });
+
+    it("should throw AdapterError when Supabase returns table does not exist error", async () => {
+      const mockQuery = {
+        upsert: vi.fn().mockReturnThis(),
+        then: vi.fn().mockImplementation((cb: (res: any) => void) =>
+          cb({ data: null, error: { message: 'relation "contlify_posts" does not exist', code: "42P01" } })
+        ),
+      };
+
+      const mockSupabase: SupabaseClientLike = {
+        from: vi.fn().mockReturnValue(mockQuery),
+      };
+
+      const adapter = createSupabaseAdapter(mockSupabase);
+      await expect(
+        adapter.createPost!({
+          title: "Failing Post",
+          content: "Content",
+        })
+      ).rejects.toThrow("Supabase table does not exist");
+    });
+
+    it("should handle network / DNS failure gracefully without unhandled rejection", async () => {
+      const mockQuery = {
+        upsert: vi.fn().mockRejectedValue(new Error("fetch failed: ENOTFOUND placeholder.supabase.co")),
+      };
+
+      const mockSupabase: any = {
+        from: vi.fn().mockReturnValue(mockQuery),
+      };
+
+      const adapter = createSupabaseAdapter(mockSupabase);
+      await expect(
+        adapter.createPost!({
+          title: "Network Fail Post",
+          content: "Content",
+        })
+      ).rejects.toThrow("Supabase error during createPost");
+    });
+
+    it("getPostBySlug should return null when post is not found", async () => {
+      const mockQuery = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { message: "JSON object requested, multiple (or no) rows returned", code: "PGRST116" } }),
+      };
+
+      const mockSupabase: any = {
+        from: vi.fn().mockReturnValue(mockQuery),
+      };
+
+      const adapter = createSupabaseAdapter(mockSupabase);
+      const post = await adapter.getPostBySlug!("non-existent-slug");
+      expect(post).toBeNull();
+    });
+
+    it("should support dynamic function client provider", async () => {
+      const mockQuery = {
+        select: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        then: vi.fn().mockImplementation((cb: (res: any) => void) =>
+          cb({ data: [{ id: "p1", title: "Post 1", slug: "post-1", content: "Body", status: "published" }], error: null })
+        ),
+      };
+
+      const mockSupabase: any = {
+        from: vi.fn().mockReturnValue(mockQuery),
+      };
+
+      const adapter = createSupabaseAdapter(() => mockSupabase);
+      const posts = await adapter.getAllPosts!();
+      expect(posts.length).toBe(1);
+      expect(posts[0].slug).toBe("post-1");
+    });
+
+    it("should safely return empty results during build when client provider returns null", async () => {
+      const adapter = createSupabaseAdapter(() => null);
+      const isAlive = await adapter.ping!();
+      expect(isAlive).toBe(false);
+
+      const posts = await adapter.getAllPosts!();
+      expect(posts).toEqual([]);
+
+      const post = await adapter.getPostBySlug!("any-slug");
+      expect(post).toBeNull();
+
+      await expect(
+        adapter.createPost!({ title: "Test", content: "Body" })
+      ).rejects.toThrow("Supabase client is not initialized");
     });
   });
 

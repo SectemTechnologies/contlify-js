@@ -70,12 +70,18 @@ export class Router implements IRouter {
         relativePath = `/${relativePath}`;
       }
 
-      const match = this.match(request.method, relativePath);
+      let match = this.match(request.method, relativePath);
+      if (!match && relativePath.startsWith("/v1/")) {
+        const unversionedPath = relativePath.slice(3);
+        match = this.match(request.method, unversionedPath);
+      }
 
       if (!match) {
         // Check if path exists under a different HTTP method for 405 Method Not Allowed
         const isPathMatchedByOtherMethod = this.routes.some(
-          (r) => this.matchPathPattern(r.path, relativePath) !== null
+          (r) =>
+            this.matchPathPattern(r.path, relativePath) !== null ||
+            (relativePath.startsWith("/v1/") && this.matchPathPattern(r.path, relativePath.slice(3)) !== null)
         );
 
         if (isPathMatchedByOtherMethod) {
