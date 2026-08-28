@@ -1,6 +1,7 @@
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
-import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
+import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
+import { AdapterError } from "../errors/adapter-error.js";
 
 /**
  * Minimal Supabase client interface.
@@ -29,6 +30,20 @@ export interface SupabaseQuery {
   then<T>(resolve: (value: { data: T[] | null; error: unknown }) => void): void;
 }
 
+function ensureNoError(res: any, operationName: string): void {
+  if (res && res.error) {
+    const msg = res.error.message || (typeof res.error === "string" ? res.error : JSON.stringify(res.error));
+    const code = res.error.code ? ` [code: ${res.error.code}]` : "";
+    if (msg.includes("does not exist") || res.error.code === "42P01" || res.error.code === "PGRST204" || res.error.code === "PGRST205") {
+      throw new AdapterError(
+        `Supabase table does not exist: ${msg}${code}. Please apply the Contlify SQL schema in your Supabase SQL Editor.`,
+        res.error
+      );
+    }
+    throw new AdapterError(`Supabase error during ${operationName}: ${msg}${code}`, res.error);
+  }
+}
+
 /**
  * Creates a pre-built Contlify adapter for Supabase.
  * Pass your `createClient(url, key)` Supabase client instance.
@@ -42,49 +57,121 @@ export interface SupabaseQuery {
  * const adapter = createSupabaseAdapter(supabase);
  * ```
  */
-export function createSupabaseAdapter(client: any): ContlifyAdapter {
+export type SupabaseClientProvider =
+  | SupabaseClientLike
+  | (() => SupabaseClientLike | null | undefined | Promise<SupabaseClientLike | null | undefined>);
 
-  async function queryAll<T>(query: SupabaseQuery): Promise<T[]> {
-    return new Promise<T[]>((resolve) => {
-      query.then(({ data, error }) => {
-        if (error) { resolve([]); return; }
-        resolve((data as T[]) ?? []);
-      });
-    });
+export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
+  async function getClient(required = true): Promise<any> {
+    try {
+      let resolved: any;
+      if (typeof clientProvider === "function") {
+        resolved = await clientProvider();
+      } else {
+        resolved = clientProvider;
+      }
+      if (!resolved || typeof resolved.from !== "function") {
+        if (required) {
+          throw new AdapterError(
+            "Supabase client is not initialized or credentials are missing (SUPABASE_URL and SUPABASE_SECRET_KEY required)."
+          );
+        }
+        return null;
+      }
+      return resolved;
+    } catch (err: any) {
+      if (err instanceof AdapterError) throw err;
+      if (required) {
+        throw new AdapterError(
+          `Failed to resolve Supabase client: ${err?.message || String(err)}`,
+          undefined,
+          err instanceof Error ? err : undefined
+        );
+      }
+      return null;
+    }
+  }
+
+  async function queryAll<T>(query: any, operationName: string = "query"): Promise<T[]> {
+    try {
+      const res = await Promise.resolve(query);
+      if (res && res.error) {
+        ensureNoError(res, operationName);
+      }
+      return (res?.data as T[]) ?? [];
+    } catch (err: any) {
+      if (err instanceof AdapterError) throw err;
+      const msg = err?.message || String(err);
+      throw new AdapterError(`Supabase error during ${operationName}: ${msg}`, undefined, err instanceof Error ? err : undefined);
+    }
+  }
+
+  async function executeSupabase<T = any>(queryPromise: any, operationName: string): Promise<{ data: T | null; error: unknown }> {
+    try {
+      const res = await Promise.resolve(queryPromise);
+      if (res && res.error) {
+        ensureNoError(res, operationName);
+      }
+      return res ?? { data: null, error: null };
+    } catch (err: any) {
+      if (err instanceof AdapterError) throw err;
+      const msg = err?.message || String(err);
+      throw new AdapterError(`Supabase error during ${operationName}: ${msg}`, undefined, err instanceof Error ? err : undefined);
+    }
   }
 
   return {
     async ping(): Promise<boolean> {
       try {
-        const res = await new Promise<{ data: unknown; error: unknown }>((resolve) => {
-          client.from("contlify_posts").select("id").limit(1).then(resolve);
-        });
-        return !res.error;
+        const client = await getClient(false);
+        if (!client || typeof client.from !== "function") return false;
+        const res = await Promise.resolve(client.from("contlify_posts").select("id").limit(1));
+        return !res?.error;
       } catch {
         return false;
       }
     },
 
     async createPost(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse> {
+      const client = await getClient(true);
       const id = (payload.externalId as string | undefined) ?? `post_${Date.now()}`;
       const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
 
-      await new Promise<void>((resolve) => {
-        client.from("contlify_posts").upsert({
-          id, title: payload.title, slug,
-          subtitle: payload.subtitle ?? null,
-          content: payload.content,
-          content_type: payload.contentType ?? "markdown",
-          excerpt: payload.excerpt ?? null,
-          cover_image: (payload.featured_image as string | undefined) ?? payload.coverImage ?? null,
-          status: payload.status ?? "published",
-          seo_data: payload.seo ? JSON.stringify(payload.seo) : null,
-          custom_fields: payload.customFields ? JSON.stringify(payload.customFields) : null,
-          published_at: payload.publishedAt ?? now,
-          created_at: now, updated_at: now,
-        }, { onConflict: "slug" }).then(() => resolve());
-      });
+      const coverImg = extractImageUrl(
+        payload.coverImage ??
+        payload.cover_image ??
+        payload.featured_image ??
+        payload.featuredImage ??
+        payload.image ??
+        payload.imageUrl ??
+        payload.image_url ??
+        payload.thumbnail
+      );
+
+      const upsertQuery = client.from("contlify_posts").upsert({
+        id, title: payload.title, slug,
+        subtitle: payload.subtitle ?? null,
+        content: payload.content,
+        content_type: payload.contentType ?? "markdown",
+        excerpt: payload.excerpt ?? null,
+        cover_image: coverImg,
+        status: payload.status ?? "published",
+        seo_data: payload.seo ? JSON.stringify(payload.seo) : null,
+        custom_fields: payload.customFields ? JSON.stringify(payload.customFields) : null,
+        published_at: payload.publishedAt ?? now,
+        created_at: now, updated_at: now,
+      }, { onConflict: "slug" });
+
+      const postRes = await executeSupabase<{ id?: string } | Array<{ id?: string }>>(
+        typeof upsertQuery?.select === "function" ? upsertQuery.select("id").single() : upsertQuery,
+        "createPost (contlify_posts)"
+      );
+
+      const resData = postRes.data;
+      const actualPostId = (resData && !Array.isArray(resData) && typeof resData === "object" ? resData.id : undefined)
+        ?? (Array.isArray(resData) && resData[0] ? resData[0].id : undefined)
+        ?? id;
 
       // Handle author (supports string name or author object)
       if (payload.author) {
@@ -96,18 +183,21 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
           ? (authorObj.avatar as { url?: string }).url ?? null
           : (authorObj.avatar as string | undefined) ?? null;
 
-        await new Promise<void>((resolve) => {
+        await executeSupabase(
           client.from("contlify_authors").upsert({
             id: authorId, name: authorName, slug: authorSlug,
             email: (authorObj.email as string) ?? null,
             bio: (authorObj.bio as string) ?? null,
             avatar: avatarStr,
             created_at: now, updated_at: now,
-          }, { onConflict: "slug" }).then(() => resolve());
-        });
-        await new Promise<void>((resolve) => {
-          client.from("contlify_posts").update({ author_id: authorId }).eq("id", id).then(() => resolve());
-        });
+          }, { onConflict: "slug" }),
+          "createPost (contlify_authors)"
+        );
+
+        await executeSupabase(
+          client.from("contlify_posts").update({ author_id: authorId }).eq("id", actualPostId),
+          "createPost (link author)"
+        );
       }
 
       // Handle categories (supports array of strings or category objects)
@@ -117,18 +207,23 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
           const catName = (cat.name as string | undefined) || "Uncategorized";
           const catSlug = slugify((cat.slug as string | undefined) ?? catName);
           const catId = (cat.externalId as string | undefined) ?? `cat_${catSlug}`;
-          await new Promise<void>((resolve) => {
+          const catCoverImg = extractImageUrl(cat.coverImage ?? cat.cover_image ?? cat.image ?? cat.imageUrl);
+
+          await executeSupabase(
             client.from("contlify_categories").upsert(
-              { id: catId, name: catName, slug: catSlug, created_at: now, updated_at: now },
+              { id: catId, name: catName, slug: catSlug, cover_image: catCoverImg, created_at: now, updated_at: now },
               { onConflict: "slug" }
-            ).then(() => resolve());
-          });
-          await new Promise<void>((resolve) => {
+            ),
+            "createPost (contlify_categories)"
+          );
+
+          await executeSupabase(
             client.from("contlify_post_categories").upsert(
-              { post_id: id, category_id: catId },
+              { post_id: actualPostId, category_id: catId },
               { onConflict: "post_id,category_id" }
-            ).then(() => resolve());
-          });
+            ),
+            "createPost (contlify_post_categories)"
+          );
         }
       }
 
@@ -139,23 +234,28 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
           const tagName = (tag.name as string | undefined) || "General";
           const tagSlug = slugify((tag.slug as string | undefined) ?? tagName);
           const tagId = (tag.externalId as string | undefined) ?? `tag_${tagSlug}`;
-          await new Promise<void>((resolve) => {
+
+          await executeSupabase(
             client.from("contlify_tags").upsert(
               { id: tagId, name: tagName, slug: tagSlug, created_at: now, updated_at: now },
               { onConflict: "slug" }
-            ).then(() => resolve());
-          });
-          await new Promise<void>((resolve) => {
+            ),
+            "createPost (contlify_tags)"
+          );
+
+          await executeSupabase(
             client.from("contlify_post_tags").upsert(
-              { post_id: id, tag_id: tagId },
+              { post_id: actualPostId, tag_id: tagId },
               { onConflict: "post_id,tag_id" }
-            ).then(() => resolve());
-          });
+            ),
+            "createPost (contlify_post_tags)"
+          );
         }
       }
 
       return {
-        postId: id, slug,
+        postId: actualPostId,
+        slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "created",
         url: `/blog/post/${slug}`,
@@ -163,6 +263,7 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
     },
 
     async updatePost(idOrSlug: string, payload: Partial<PublishPostPayload> & Record<string, unknown>): Promise<PublishResponse> {
+      const client = await getClient(true);
       const now = new Date().toISOString();
       const updates: Record<string, unknown> = { updated_at: now };
 
@@ -170,26 +271,44 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
       if (payload.content) updates.content = payload.content;
       if (payload.status) updates.status = payload.status;
       if (payload.excerpt) updates.excerpt = payload.excerpt;
+      
+      const coverImg = extractImageUrl(
+        payload.coverImage ??
+        payload.cover_image ??
+        payload.featured_image ??
+        payload.featuredImage ??
+        payload.image ??
+        payload.imageUrl ??
+        payload.image_url ??
+        payload.thumbnail
+      );
+      if (coverImg !== null || payload.coverImage !== undefined || payload.cover_image !== undefined || payload.featured_image !== undefined) {
+        updates.cover_image = coverImg;
+      }
+
       if (payload.custom_slug ?? payload.slug) {
         updates.slug = slugify((payload.custom_slug ?? payload.slug) as string);
       }
 
-      await new Promise<void>((resolve) => {
-        client.from("contlify_posts").update(updates).or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`).then(() => resolve());
-      });
+      await executeSupabase(
+        client.from("contlify_posts").update(updates).or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`),
+        "updatePost"
+      );
 
       const newSlug = (updates.slug as string | undefined) ?? idOrSlug;
 
       return {
-        postId: idOrSlug, slug: newSlug,
+        postId: idOrSlug,
+        slug: newSlug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
         action: "updated",
         url: `/blog/post/${newSlug}`,
       };
     },
 
-
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
+      const client = await getClient(false);
+      if (!client || typeof client.from !== "function") return [];
       let q = client.from("contlify_posts").select("*");
       if (options?.status) q = q.eq("status", options.status);
       const orderCol = options?.orderBy === "createdAt" ? "created_at" : options?.orderBy === "updatedAt" ? "updated_at" : "published_at";
@@ -199,68 +318,103 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
       } else if (options?.limit) {
         q = q.limit(options.limit);
       }
-      const rows = await queryAll<RawPostRow>(q);
+      const rows = await queryAll<RawPostRow>(q, "getAllPosts");
       return rows.map((row) => mapRowToPost(row));
     },
 
     async getPostBySlug(slug: string): Promise<Post | null> {
-      const result = await client.from("contlify_posts").select("*").eq("slug", slug).single();
-      if (!result.data) return null;
-      return mapRowToPost(result.data as unknown as RawPostRow);
+      try {
+        const client = await getClient(false);
+        if (!client || typeof client.from !== "function") return null;
+        const result = await Promise.resolve(client.from("contlify_posts").select("*").eq("slug", slug).single());
+        if (!result || !result.data) return null;
+        return mapRowToPost(result.data as unknown as RawPostRow);
+      } catch {
+        return null;
+      }
     },
 
     async getPostById(id: string): Promise<Post | null> {
-      const result = await client.from("contlify_posts").select("*").eq("id", id).single();
-      if (!result.data) return null;
-      return mapRowToPost(result.data as unknown as RawPostRow);
+      try {
+        const client = await getClient(false);
+        if (!client || typeof client.from !== "function") return null;
+        const result = await Promise.resolve(client.from("contlify_posts").select("*").eq("id", id).single());
+        if (!result || !result.data) return null;
+        return mapRowToPost(result.data as unknown as RawPostRow);
+      } catch {
+        return null;
+      }
     },
 
     async getPostsByCategory(categorySlug: string): Promise<Post[]> {
-      const catRes = await client.from("contlify_categories").select("id").eq("slug", categorySlug).single();
-      if (!catRes.data) return [];
-      const catId = (catRes.data as { id: string }).id;
-      const joinRows = await queryAll<{ post_id: string }>(
-        client.from("contlify_post_categories").select("post_id").eq("category_id", catId)
-      );
-      const postIds = joinRows.map((r) => r.post_id);
-      if (!postIds.length) return [];
-      const rows = await queryAll<RawPostRow>(
-        client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false })
-      );
-      return rows.map((row) => mapRowToPost(row));
+      try {
+        const client = await getClient(false);
+        if (!client || typeof client.from !== "function") return [];
+        const catRes = await Promise.resolve(client.from("contlify_categories").select("id").eq("slug", categorySlug).single());
+        if (!catRes || !catRes.data) return [];
+        const catId = (catRes.data as { id: string }).id;
+        const joinRows = await queryAll<{ post_id: string }>(
+          client.from("contlify_post_categories").select("post_id").eq("category_id", catId),
+          "getPostsByCategory (join)"
+        );
+        const postIds = joinRows.map((r) => r.post_id);
+        if (!postIds.length) return [];
+        const rows = await queryAll<RawPostRow>(
+          client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false }),
+          "getPostsByCategory (posts)"
+        );
+        return rows.map((row) => mapRowToPost(row));
+      } catch {
+        return [];
+      }
     },
 
     async getPostsByTag(tagSlug: string): Promise<Post[]> {
-      const tagRes = await client.from("contlify_tags").select("id").eq("slug", tagSlug).single();
-      if (!tagRes.data) return [];
-      const tagId = (tagRes.data as { id: string }).id;
-      const joinRows = await queryAll<{ post_id: string }>(
-        client.from("contlify_post_tags").select("post_id").eq("tag_id", tagId)
-      );
-      const postIds = joinRows.map((r) => r.post_id);
-      if (!postIds.length) return [];
-      const rows = await queryAll<RawPostRow>(
-        client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false })
-      );
-      return rows.map((row) => mapRowToPost(row));
+      try {
+        const client = await getClient(false);
+        if (!client || typeof client.from !== "function") return [];
+        const tagRes = await Promise.resolve(client.from("contlify_tags").select("id").eq("slug", tagSlug).single());
+        if (!tagRes || !tagRes.data) return [];
+        const tagId = (tagRes.data as { id: string }).id;
+        const joinRows = await queryAll<{ post_id: string }>(
+          client.from("contlify_post_tags").select("post_id").eq("tag_id", tagId),
+          "getPostsByTag (join)"
+        );
+        const postIds = joinRows.map((r) => r.post_id);
+        if (!postIds.length) return [];
+        const rows = await queryAll<RawPostRow>(
+          client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false }),
+          "getPostsByTag (posts)"
+        );
+        return rows.map((row) => mapRowToPost(row));
+      } catch {
+        return [];
+      }
     },
 
     async getPostCount(options?: { status?: Post["status"] }): Promise<number> {
+      const client = await getClient(false);
+      if (!client || typeof client.from !== "function") return 0;
       const rows = await queryAll<{ id: string }>(
         options?.status
           ? client.from("contlify_posts").select("id").eq("status", options.status)
-          : client.from("contlify_posts").select("id")
+          : client.from("contlify_posts").select("id"),
+        "getPostCount"
       );
       return rows.length;
     },
 
     async getAuthors(): Promise<Author[]> {
-      const rows = await queryAll<RawAuthorRow>(client.from("contlify_authors").select("*").order("name", { ascending: true }));
+      const client = await getClient(false);
+      if (!client || typeof client.from !== "function") return [];
+      const rows = await queryAll<RawAuthorRow>(client.from("contlify_authors").select("*").order("name", { ascending: true }), "getAuthors");
       return rows.map(mapRowToAuthor);
     },
 
     async getCategories(): Promise<Category[]> {
-      const rows = await queryAll<RawCategoryRow>(client.from("contlify_categories").select("*").order("name", { ascending: true }));
+      const client = await getClient(false);
+      if (!client || typeof client.from !== "function") return [];
+      const rows = await queryAll<RawCategoryRow>(client.from("contlify_categories").select("*").order("name", { ascending: true }), "getCategories");
       const baseCategories = rows.map(mapRowToCategory);
 
       return Promise.all(
@@ -268,12 +422,14 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
           if (cat.coverImage) return cat;
           try {
             const joinRows = await queryAll<{ post_id: string }>(
-              client.from("contlify_post_categories").select("post_id").eq("category_id", cat.id)
+              client.from("contlify_post_categories").select("post_id").eq("category_id", cat.id),
+              "getCategories (cover image join)"
             );
             const postIds = joinRows.map((r) => r.post_id);
             if (!postIds.length) return cat;
             const postRows = await queryAll<{ cover_image?: string }>(
-              client.from("contlify_posts").select("cover_image").in("id", postIds).order("published_at", { ascending: false })
+              client.from("contlify_posts").select("cover_image").in("id", postIds).order("published_at", { ascending: false }),
+              "getCategories (cover image post)"
             );
             const validRow = postRows.find((r) => r.cover_image && r.cover_image.trim() !== "");
             return { ...cat, coverImage: validRow?.cover_image };
@@ -286,18 +442,30 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
 
     async updateCategory(
       idOrSlug: string,
-      payload: { name?: string; slug?: string; description?: string; coverImage?: string }
+      payload: { name?: string; slug?: string; description?: string; coverImage?: string } & Record<string, unknown>
     ): Promise<Category> {
+      const client = await getClient(true);
       const updateData: Record<string, unknown> = {};
       if (payload.name !== undefined) updateData.name = payload.name;
       if (payload.slug !== undefined) updateData.slug = payload.slug;
       if (payload.description !== undefined) updateData.description = payload.description;
+      if (payload.coverImage !== undefined || (payload as any).cover_image !== undefined) {
+        updateData.cover_image = extractImageUrl(payload.coverImage ?? (payload as any).cover_image);
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        const existing = await queryAll<RawCategoryRow>(
+          client.from("contlify_categories").select("*").or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`).limit(1),
+          "updateCategory (get existing)"
+        );
+        if (!existing[0]) throw new Error(`Category not found: ${idOrSlug}`);
+        return mapRowToCategory(existing[0]);
+      }
 
       let query = client.from("contlify_categories").update(updateData);
-      // Check if idOrSlug looks like a UUID or numeric ID, or match on both
       query = query.or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`).select("*");
 
-      const rows = await queryAll<RawCategoryRow>(query);
+      const rows = await queryAll<RawCategoryRow>(query, "updateCategory");
       if (!rows[0]) {
         throw new Error(`Category not found: ${idOrSlug}`);
       }
@@ -305,7 +473,9 @@ export function createSupabaseAdapter(client: any): ContlifyAdapter {
     },
 
     async getTags(): Promise<Tag[]> {
-      const rows = await queryAll<RawTagRow>(client.from("contlify_tags").select("*").order("name", { ascending: true }));
+      const client = await getClient(false);
+      if (!client || typeof client.from !== "function") return [];
+      const rows = await queryAll<RawTagRow>(client.from("contlify_tags").select("*").order("name", { ascending: true }), "getTags");
       return rows.map(mapRowToTag);
     },
   };

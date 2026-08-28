@@ -1,6 +1,6 @@
 {
   "name": "contlify",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Standardized blog publishing engine and database adapter API framework for Next.js websites",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/frameworks/next/index.d.ts",
+      "import": "./dist/frameworks/next/index.mjs",
+      "require": "./dist/frameworks/next/index.js"
     }
   },
   "files": [
@@ -23,18 +28,16 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "cli": "node dist/bin/contlify.js",
-    "prepack": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "cli": "node dist/bin/contlify.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SectemTechnologies/contlify-js.git"
+    "url": "git+https://github.com/SectemTechnologies/Next.js-Package.git"
   },
   "bugs": {
-    "url": "https://github.com/SectemTechnologies/contlify-js/issues"
+    "url": "https://github.com/SectemTechnologies/Next.js-Package/issues"
   },
-  "homepage": "https://github.com/SectemTechnologies/contlify-js#readme",
+  "homepage": "https://github.com/SectemTechnologies/Next.js-Package#readme",
   "keywords": [
     "contlify",
     "cms",
@@ -50,8 +53,33 @@
   "publishConfig": {
     "access": "public"
   },
+  "peerDependencies": {
+    "@neondatabase/serverless": "^0.10.4 || ^1.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "mongodb": "^6.0.0 || ^7.0.0",
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@neondatabase/serverless": {
+      "optional": true
+    },
+    "@supabase/supabase-js": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@supabase/supabase-js": "^2.112.4",
     "@types/node": "^20.14.12",
+    "@types/pg": "^8.23.1",
+    "mongodb": "^7.6.0",
+    "pg": "^8.23.0",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"

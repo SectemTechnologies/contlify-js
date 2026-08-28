@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS contlify_categories (
   slug        VARCHAR(255) UNIQUE NOT NULL,
   description TEXT,
   parent_id   VARCHAR(255),
+  cover_image TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -59,8 +60,8 @@ CREATE TABLE IF NOT EXISTS contlify_post_categories (
 );
 
 CREATE TABLE IF NOT EXISTS contlify_post_tags (
-  post_id TEXT REFERENCES contlify_posts(id) ON DELETE CASCADE,
-  tag_id  TEXT REFERENCES contlify_tags(id) ON DELETE CASCADE,
+  post_id VARCHAR(255) REFERENCES contlify_posts(id) ON DELETE CASCADE,
+  tag_id  VARCHAR(255) REFERENCES contlify_tags(id) ON DELETE CASCADE,
   PRIMARY KEY (post_id, tag_id)
 );
 

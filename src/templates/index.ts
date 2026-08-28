@@ -1,41 +1,21 @@
 /**
- * Template System (Blog Page Scaffolding)
- * Next.js, Astro, and React Router v7 packs live in their own folders.
+ * Contlify Template System (v2 Minimal Scaffolding)
  */
 export type { ContlifyFramework } from "./framework.js";
 export type { ScaffoldFileEntry } from "./types.js";
 
-export { getBlogListingTemplate, getCategoryPostsTemplate, getBlogPostTemplate, getBlogLoadingTemplate, getApiRouteTemplate } from "./nextjs/index.js";
-export { getQueriesTemplate } from "./shared/queries.template.js";
-export { getAdapterConfigTemplate } from "./shared/adapter-config.template.js";
-export { getNextjsScaffoldManifest } from "./nextjs/index.js";
-export { getAstroScaffoldManifest, getAstroApiRouteTemplate, getAstroBlogListingTemplate, getAstroBlogPostTemplate, getAstroCategoryPostsTemplate } from "./astro/index.js";
+// v2 minimal scaffold manifests & templates
 export {
-  getReactRouterScaffoldManifest,
-  getReactRouterApiRouteTemplate,
-  getReactRouterBlogListingTemplate,
-  getReactRouterBlogPostTemplate,
-  getReactRouterCategoryPostsTemplate,
-} from "./react-router/index.js";
-
-import type { ContlifyFramework } from "./framework.js";
-import type { ScaffoldFileEntry } from "./types.js";
-import { getNextjsScaffoldManifest } from "./nextjs/index.js";
-import { getAstroScaffoldManifest } from "./astro/index.js";
-import { getReactRouterScaffoldManifest } from "./react-router/index.js";
-
-/**
- * Returns scaffold files for the chosen framework.
- * Defaults to Next.js so existing CLI / tests stay unchanged.
- */
-export function getScaffoldManifest(framework: ContlifyFramework = "nextjs"): ScaffoldFileEntry[] {
-  switch (framework) {
-    case "astro":
-      return getAstroScaffoldManifest();
-    case "react-router":
-      return getReactRouterScaffoldManifest();
-    case "nextjs":
-    default:
-      return getNextjsScaffoldManifest();
-  }
-}
+  getV2ScaffoldManifest,
+  getNextjsV2ScaffoldManifest,
+  getAstroV2ScaffoldManifest,
+  getReactRouterV2ScaffoldManifest,
+  getContlifyConfigTemplate,
+  getNextjsV2RouteTemplate,
+  getAstroV2RouteTemplate,
+  getReactRouterV2RouteTemplate,
+  type V2ScaffoldOptions,
+  type V2MigrationMode,
+  type PostgresDeployment,
+  type SupabaseConnectionMode,
+} from "./v2/index.js";

@@ -9,6 +9,43 @@ if (typeof globalThis !== "undefined" && !(globalThis as Record<string, unknown>
   (globalThis as Record<string, unknown>).__name = (target: unknown) => target;
 }
 
+// Configuration System (v2 Declarative + v1 Legacy)
+export { defineConfig } from "./config/define-config.js";
+export { resolveConfig, defaultLogger } from "./config/default-config.js";
+export { resolveStorageAdapter } from "./config/storage-resolver.js";
+export type {
+  ContlifyConfig,
+  ContlifyConfigInput,
+  ResolvedContlifyConfig,
+  StorageConfig,
+  PostgresStorageConfig,
+  SupabaseStorageConfig,
+  D1StorageConfig,
+  MongoStorageConfig,
+  CustomStorageConfig,
+  SecurityConfig,
+  ApiConfig,
+  LoggerContract,
+  FeatureFlags,
+  UrlBuilderFunction,
+} from "./config/types.js";
+
+// Read-Side Query Functions & Contracts
+export {
+  getAllPosts,
+  getPostBySlug,
+  getPostById,
+  getPostsByCategory,
+  getPostsByTag,
+  getPostCount,
+  getCategories,
+  getTags,
+  getAuthors,
+  type ContlifyQueryContract,
+  type PostQueryOptions,
+  type PaginatedPostsResult,
+} from "./queries/index.js";
+
 // Primary Entry Point & Handlers
 export { createContlifyHandler, type ContlifyHandler } from "./core/handler.js";
 export { RequestContext } from "./core/request-context.js";
@@ -20,7 +57,6 @@ export { handleGetCategories } from "./core/categories-handler.js";
 export { handleUpdateCategory } from "./core/update-category-handler.js";
 export { handleGetTags } from "./core/tags-handler.js";
 
-
 // Node.js / Express Middleware Bridge (Express, Angular SSR, Fastify)
 export {
   createNodeMiddleware,
@@ -29,17 +65,6 @@ export {
   type NodeLikeRequest,
   type NodeMiddleware,
 } from "./node/index.js";
-
-
-// Configuration System
-export type {
-  ContlifyConfig,
-  ResolvedContlifyConfig,
-  LoggerContract,
-  FeatureFlags,
-  UrlBuilderFunction,
-} from "./config/contlify-config.js";
-export { defaultLogger, resolveConfig } from "./config/default-config.js";
 
 // Storage Engine & Adapter Contracts
 export type {
@@ -119,41 +144,65 @@ export { slugify } from "./utils/slugify.js";
 export { optimizeContentImages, type ImageTransformOptions } from "./utils/image-transformer.js";
 export { HttpStatus, type HttpStatusCode } from "./utils/http-status.js";
 
-// Read-Side Query Contract
-export type {
-  ContlifyQueryContract,
-  PostQueryOptions,
-  PaginatedPostsResult,
-} from "./queries/index.js";
-
 export type { ContlifyFramework } from "./templates/framework.js";
 
-// Pre-Built Database Adapters (Phase 2)
+// Pre-Built Database Adapters
 export {
   createPostgresAdapter,
+  ensurePostgresSchema,
   createSupabaseAdapter,
   createD1Adapter,
+  ensureD1Schema,
   createMongoAdapter,
   mapRowToPost,
   mapRowToAuthor,
   mapRowToCategory,
   mapRowToTag,
+  extractImageUrl,
   type PostgresClientLike,
   type SupabaseClientLike,
   type D1DatabaseLike,
   type D1StmtLike,
+  type D1DatabaseProvider,
   type MongoDbLike,
   type MongoCollectionLike,
+  type MongoDbProvider,
   type RawPostRow,
   type RawAuthorRow,
   type RawCategoryRow,
   type RawTagRow,
 } from "./built-in-adapters/index.js";
 
-// Database Migration Schemas (Phase 2)
+// Database Migration Schemas
 export {
   postgresSchema,
   d1Schema,
   getMigrationSql,
   type SupportedDatabaseType,
 } from "./migrations/index.js";
+
+// Scaffolding & Manifests (v2 Library Architecture)
+export {
+  scaffoldProject,
+  scaffoldProjectV2,
+  detectBaseDir,
+  formatScaffoldResults,
+  type ScaffoldOptions,
+  type ScaffoldV2Options,
+  type ScaffoldFileResult,
+} from "./cli/scaffolder.js";
+
+export {
+  getV2ScaffoldManifest,
+  getNextjsV2ScaffoldManifest,
+  getAstroV2ScaffoldManifest,
+  getReactRouterV2ScaffoldManifest,
+  getContlifyConfigTemplate,
+  getNextjsV2RouteTemplate,
+  getAstroV2RouteTemplate,
+  getReactRouterV2RouteTemplate,
+  type V2MigrationMode,
+  type V2ScaffoldOptions,
+  type PostgresDeployment,
+  type SupabaseConnectionMode,
+} from "./templates/v2/index.js";

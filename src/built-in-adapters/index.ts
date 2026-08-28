@@ -43,15 +43,16 @@
  * ```
  */
 
-export { createPostgresAdapter, type PostgresClientLike } from "./postgres.js";
+export { createPostgresAdapter, ensurePostgresSchema, type PostgresClientLike } from "./postgres.js";
 export { createSupabaseAdapter, type SupabaseClientLike } from "./supabase.js";
-export { createD1Adapter, type D1DatabaseLike, type D1StmtLike } from "./d1.js";
-export { createMongoAdapter, type MongoDbLike, type MongoCollectionLike } from "./mongodb.js";
+export { createD1Adapter, ensureD1Schema, type D1DatabaseLike, type D1StmtLike, type D1DatabaseProvider } from "./d1.js";
+export { createMongoAdapter, type MongoDbLike, type MongoCollectionLike, type MongoDbProvider } from "./mongodb.js";
 export {
   mapRowToPost,
   mapRowToAuthor,
   mapRowToCategory,
   mapRowToTag,
+  extractImageUrl,
   type RawPostRow,
   type RawAuthorRow,
   type RawCategoryRow,

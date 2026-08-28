@@ -1,6 +1,26 @@
 import type { Post, Author, Category, Tag } from "../types/domain.js";
 
 /**
+ * Extracts a clean image URL from a string, MediaAsset object ({ url, src, ... }), or undefined/null.
+ */
+export function extractImageUrl(val: unknown): string | null {
+  if (!val) return null;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof val === "object" && val !== null) {
+    const obj = val as Record<string, unknown>;
+    const candidate = obj.url ?? obj.src ?? obj.image ?? obj.secure_url;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      return trimmed ? trimmed : null;
+    }
+  }
+  return null;
+}
+
+/**
  * Raw database row shape returned by a SQL SELECT * on contlify_posts.
  * Both postgres and D1 rows follow this shape.
  */
@@ -44,6 +64,7 @@ export interface RawCategoryRow {
   name: string;
   slug: string;
   description?: string | null;
+  cover_image?: string | null;
   parent_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -138,6 +159,7 @@ export function mapRowToCategory(row: RawCategoryRow): Category {
     name: row.name,
     slug: row.slug,
     description: row.description ?? undefined,
+    coverImage: row.cover_image ?? undefined,
     parentId: row.parent_id ?? undefined,
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? new Date().toISOString(),

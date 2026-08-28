@@ -1,9 +1,10 @@
+#!/usr/bin/env node
 /**
  * contlify CLI entry point
  *
  * Usage:
- *   npx contlify init       — Interactive project setup (scaffolds pages + adapter)
- *   npx contlify migrate    — Generate database migration SQL file
+ *   npx contlify init       — Interactive project setup (generates contlify.config.ts + API gateway)
+ *   npx contlify migrate    — Generate database migration SQL file or inspect schema
  *   npx contlify --version  — Print package version
  *   npx contlify --help     — Print help text
  */
@@ -23,7 +24,7 @@ const COLORS = {
 
 function getVersion(): string {
   try {
-    // When running from dist/bin/contlify.js, package.json is two levels up
+    // When running from dist/bin/contlify.mjs, package.json is two levels up
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const pkgPath = path.join(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { version: string };
@@ -41,8 +42,8 @@ ${COLORS.bold}  contlify CLI${COLORS.reset}
     npx contlify <command> [options]
 
   ${COLORS.cyan}Commands:${COLORS.reset}
-    init         Interactive setup — scaffold pages, adapter, and migration
-    migrate      Generate migration SQL for your database
+    init         Interactive setup — generate contlify.config.ts and framework gateway
+    migrate      Generate database migration SQL or view schema
 
   ${COLORS.cyan}Options:${COLORS.reset}
     --overwrite  Overwrite existing files during init

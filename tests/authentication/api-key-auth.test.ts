@@ -6,7 +6,19 @@ describe("ApiKeyAuthStrategy", () => {
   const authStrategy = new ApiKeyAuthStrategy();
   const EXPECTED_KEY = "test-secret-key-123";
 
-  it("should authenticate successfully with X-Truecmo-Key header", async () => {
+  it("should authenticate successfully with X-Contlify-Key header", async () => {
+    const req = new Request("http://localhost/api/contlify/posts", {
+      method: "POST",
+      headers: { "X-Contlify-Key": EXPECTED_KEY },
+    });
+    const ctx = await RequestContext.fromRequest(req);
+    const result = await authStrategy.authenticate(ctx, EXPECTED_KEY);
+
+    expect(result.authenticated).toBe(true);
+    expect(result.publisherId).toBe("contlify");
+  });
+
+  it("should authenticate successfully with X-Truecmo-Key legacy header", async () => {
     const req = new Request("http://localhost/api/contlify/posts", {
       method: "POST",
       headers: { "X-Truecmo-Key": EXPECTED_KEY },
@@ -45,7 +57,7 @@ describe("ApiKeyAuthStrategy", () => {
   it("should reject invalid API key", async () => {
     const req = new Request("http://localhost/api/contlify/posts", {
       method: "POST",
-      headers: { "X-Truecmo-Key": "wrong-key" },
+      headers: { "X-Contlify-Key": "wrong-key" },
     });
     const ctx = await RequestContext.fromRequest(req);
     const result = await authStrategy.authenticate(ctx, EXPECTED_KEY);
@@ -66,7 +78,7 @@ describe("ApiKeyAuthStrategy", () => {
   it("should fail if expected API key is empty", async () => {
     const req = new Request("http://localhost/api/contlify/posts", {
       method: "POST",
-      headers: { "X-Truecmo-Key": EXPECTED_KEY },
+      headers: { "X-Contlify-Key": EXPECTED_KEY },
     });
     const ctx = await RequestContext.fromRequest(req);
     const result = await authStrategy.authenticate(ctx, "");
