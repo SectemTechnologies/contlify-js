@@ -52,16 +52,27 @@ export async function handleUpdatePost(ctx: RouteContext): Promise<Response> {
   let postUrl: string | undefined = undefined;
   if (slug) {
     const postForUrl = { ...payload, ...(content ? { content } : {}), slug };
-    const resolver = ctx.config.getPostUrl ?? ctx.config.buildPostUrl;
-    if (resolver) {
+    if (typeof ctx.config.postUrl === "function") {
       try {
-        postUrl = resolver(postForUrl);
+        postUrl = ctx.config.postUrl(postForUrl);
       } catch (err) {
-        ctx.config.logger.warn("Custom getPostUrl callback threw an error during update:", err);
+        ctx.config.logger.warn("Custom postUrl callback threw an error during update:", err);
         postUrl = `/blog/post/${slug}`;
       }
+    } else if (typeof ctx.config.postUrl === "string" && ctx.config.postUrl.trim() !== "") {
+      postUrl = ctx.config.postUrl.replace(/{slug}/g, slug);
     } else {
-      postUrl = `/blog/post/${slug}`;
+      const resolver = ctx.config.getPostUrl ?? ctx.config.buildPostUrl;
+      if (resolver) {
+        try {
+          postUrl = resolver(postForUrl);
+        } catch (err) {
+          ctx.config.logger.warn("Custom getPostUrl callback threw an error during update:", err);
+          postUrl = `/blog/post/${slug}`;
+        }
+      } else {
+        postUrl = `/blog/post/${slug}`;
+      }
     }
   }
 

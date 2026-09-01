@@ -24,6 +24,9 @@ export type NodeMiddleware = (req: NodeLikeRequest, res: ServerResponse) => Prom
  * Reads the raw request stream when Express has not already parsed the body.
  */
 function readIncomingBody(req: IncomingMessage): Promise<Buffer> {
+  if (req.readableEnded || req.destroyed) {
+    return Promise.resolve(Buffer.alloc(0));
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer | string) => {

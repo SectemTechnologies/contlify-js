@@ -24,14 +24,20 @@ const COLORS = {
 
 function getVersion(): string {
   try {
-    // When running from dist/bin/contlify.mjs, package.json is two levels up
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const pkgPath = path.join(__dirname, "../../package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { version: string };
-    return pkg.version;
-  } catch {
-    return "unknown";
-  }
+    const candidates = [
+      path.join(__dirname, "../../package.json"),
+      path.join(__dirname, "../package.json"),
+      path.join(__dirname, "package.json"),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        const pkg = JSON.parse(fs.readFileSync(candidate, "utf-8")) as { version?: string };
+        if (pkg?.version) return pkg.version;
+      }
+    }
+  } catch {}
+  return "1.0.0";
 }
 
 function printHelp(): void {
@@ -59,7 +65,14 @@ ${COLORS.bold}  contlify CLI${COLORS.reset}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const command = args[0];
+  const validFlags = new Set(["--overwrite", "--help", "-h", "--version", "-v"]);
+  const unknownFlags = args.filter((a) => a.startsWith("-") && !validFlags.has(a));
+  if (unknownFlags.length > 0) {
+    console.error(`\n  ❌ Unknown option(s): ${unknownFlags.join(", ")}\n`);
+    printHelp();
+    process.exit(1);
+  }
+
   const flags = {
     overwrite: args.includes("--overwrite"),
     help: args.includes("--help") || args.includes("-h"),
@@ -70,6 +83,8 @@ async function main(): Promise<void> {
     console.log(`contlify v${getVersion()}`);
     return;
   }
+
+  const command = args.find((a) => !a.startsWith("-"));
 
   if (!command || flags.help) {
     printHelp();

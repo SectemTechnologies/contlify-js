@@ -147,9 +147,9 @@ CONTLIFY_API_KEY=your_api_key_here
  */
 function patchNextConfig(projectRoot: string, pkg: string): void {
   const configPaths = [
+    path.join(projectRoot, "next.config.ts"),
     path.join(projectRoot, "next.config.mjs"),
     path.join(projectRoot, "next.config.js"),
-    path.join(projectRoot, "next.config.ts"),
   ];
 
   const configPath = configPaths.find(p => fs.existsSync(p));
@@ -159,9 +159,12 @@ function patchNextConfig(projectRoot: string, pkg: string): void {
 
   if (content.includes("serverExternalPackages")) return;
 
+  const isTs = configPath.endsWith(".ts");
+  const typeAnnotation = isTs && content.includes("NextConfig") ? ": NextConfig" : "";
+
   content = content.replace(
     /const nextConfig(?::\s*[^=]+)?\s*=\s*\{/,
-    `const nextConfig: NextConfig = {\n  serverExternalPackages: ["${pkg}"],`
+    `const nextConfig${typeAnnotation} = {\n  serverExternalPackages: ["${pkg}"],`
   );
 
   if (!content.includes("serverExternalPackages")) {
@@ -392,11 +395,17 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
 
   // Step 6: Scaffold files (v2 minimal: config + route only)
   log("");
+  let overwrite = flags.overwrite ?? false;
+  const configPath = path.join(projectRoot, "contlify.config.ts");
+  if (!overwrite && fs.existsSync(configPath)) {
+    overwrite = await confirm("  ⚠️  contlify.config.ts already exists. Overwrite with new configuration?", false);
+  }
+
   info("  📁 Scaffolding files...");
 
   const results = scaffoldProjectV2({
     projectRoot,
-    overwrite: flags.overwrite ?? false,
+    overwrite,
     framework,
     dbType,
     migrationMode,

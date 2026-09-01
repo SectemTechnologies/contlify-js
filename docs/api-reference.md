@@ -1,50 +1,54 @@
-# Contlify API Reference
+# 📚 Contlify REST API Reference
 
-Comprehensive HTTP API documentation for `contlify` middleware endpoints.
+Comprehensive HTTP REST API documentation for `contlify` publishing and management endpoints.
 
 ---
 
-## Authentication & Headers
+## 🔐 Authentication & Headers
 
-All API endpoints require API key authentication.
+All mutating and administrative endpoints require API key authentication.
 
 ### Supported Authentication Headers
 
 You can supply your API key using any of the following standard headers:
 
-| Header | Format | Example |
+| Header | Format | Description |
 | :--- | :--- | :--- |
-| `x-api-key` | Raw Key (Standard) | `x-api-key: your_secret_api_key` |
-| `Authorization` | Bearer Token | `Authorization: Bearer your_secret_api_key` |
-| `X-Truecmo-Key` | Publisher Platform Header | `X-Truecmo-Key: your_secret_api_key` |
+| `X-Contlify-Key` | Raw Secret Key | **Primary v2 Header (Recommended)** |
+| `x-api-key` | Raw Secret Key | Universal standard API key header |
+| `Authorization` | Bearer Token (`Bearer <key>`) | Standard OAuth/Bearer Authorization header |
+| `X-Truecmo-Key` | Raw Secret Key | Legacy v1 backward-compatibility header |
 
 ---
 
-## Endpoints Summary
+## 📑 Endpoints Summary
 
 All routes are versioned under `/api/contlify/v1`:
 
-| Method | Endpoint Path | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/contlify/v1/validate` | Full system validation, API key check, and database adapter capabilities |
-| `GET` | `/api/contlify/v1/health` | Health check endpoint |
-| `POST` | `/api/contlify/v1/posts` | Create and publish a new blog post |
-| `PATCH` | `/api/contlify/v1/posts/:id` | Partial update of an existing post by ID or slug |
-| `PUT` | `/api/contlify/v1/posts/:id` | Full update or replacement of a post by ID or slug |
-| `GET` | `/api/contlify/v1/authors` | Retrieve list of authors |
-| `GET` | `/api/contlify/v1/categories` | Retrieve list of categories |
-| `GET` | `/api/contlify/v1/tags` | Retrieve list of tags |
+| Method | Endpoint Path | Auth Required | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/contlify/v1/validate` | ✅ Yes | Full system validation, API key verification, and database adapter capabilities |
+| `GET` | `/api/contlify/v1/health` | ✅ Yes | Health check endpoint |
+| `POST` | `/api/contlify/v1/posts` | ✅ Yes | Create and publish a new blog post |
+| `GET` | `/api/contlify/v1/posts/:id` | ✅ Yes | Fetch a single post by ID or slug |
+| `PATCH` | `/api/contlify/v1/posts/:id` | ✅ Yes | Partial update of an existing post by ID or slug |
+| `PUT` | `/api/contlify/v1/posts/:id` | ✅ Yes | Full update or replacement of a post by ID or slug |
+| `GET` | `/api/contlify/v1/categories` | ✅ Yes | Retrieve list of all categories with post counts |
+| `PATCH` | `/api/contlify/v1/categories/:id` | ✅ Yes | Partial update of an existing category by ID or slug |
+| `PUT` | `/api/contlify/v1/categories/:id` | ✅ Yes | Full update of an existing category by ID or slug |
+| `GET` | `/api/contlify/v1/tags` | ✅ Yes | Retrieve list of all tags with post counts |
+| `GET` | `/api/contlify/v1/authors` | ✅ Yes | Retrieve list of all authors |
 
 ---
 
-## 1. System Health & Validation (`GET /api/contlify/v1/validate` & `GET /api/contlify/v1/health`)
+## 1. System Health & Validation (`GET /validate` & `GET /health`)
 
-Verifies connectivity, system health, and database adapter capabilities.
+Verifies API connectivity, configuration sanity, and database adapter connectivity.
 
 ### Request Example
 ```bash
 curl -X GET "https://yourwebsite.com/api/contlify/v1/validate" \
-  -H "x-api-key: your_secret_api_key"
+  -H "X-Contlify-Key: your_secret_api_key"
 ```
 
 ### Success Response (`200 OK`)
@@ -64,19 +68,19 @@ curl -X GET "https://yourwebsite.com/api/contlify/v1/validate" \
     }
   },
   "meta": {
-    "timestamp": "2026-08-27T00:00:00.000Z"
+    "timestamp": "2026-09-01T00:00:00.000Z"
   }
 }
 ```
 
 ---
 
-## 2. Publish Post (`POST /api/contlify/v1/posts`)
+## 2. Publish Post (`POST /posts`)
 
-Creates and publishes a new blog post.
+Creates and publishes a new blog post into your configured database.
 
 ### Request Headers
-- `x-api-key`: `your_secret_api_key`
+- `X-Contlify-Key`: `your_secret_api_key`
 - `Content-Type`: `application/json`
 
 ### Request Body Schema
@@ -84,7 +88,7 @@ Creates and publishes a new blog post.
 ```json
 {
   "title": "string (Required)",
-  "content": "string (Required)",
+  "content": "string (Required — HTML or Markdown)",
   "status": "published | draft | archived | scheduled (Required)",
   "custom_slug": "string (Optional — auto-generated from title if omitted)",
   "subtitle": "string (Optional)",
@@ -101,7 +105,8 @@ Creates and publishes a new blog post.
     {
       "name": "Engineering",
       "slug": "engineering",
-      "coverImage": "https://example.com/category-cover.jpg"
+      "description": "Technical tutorials",
+      "coverImage": "https://example.com/engineering-cover.jpg"
     }
   ],
   "tags": [
@@ -123,7 +128,7 @@ Creates and publishes a new blog post.
 ### Request Example (cURL)
 ```bash
 curl -X POST "https://yourwebsite.com/api/contlify/v1/posts" \
-  -H "x-api-key: your_secret_api_key" \
+  -H "X-Contlify-Key: your_secret_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Building with Contlify",
@@ -141,7 +146,6 @@ curl -X POST "https://yourwebsite.com/api/contlify/v1/posts" \
 {
   "status": "success",
   "post_id": "post_1724789000",
-  "slug": "building-with-contlify",
   "post_url": "/blog/building-with-contlify",
   "data": {
     "postId": "post_1724789000",
@@ -155,19 +159,56 @@ curl -X POST "https://yourwebsite.com/api/contlify/v1/posts" \
 
 ---
 
-## 3. Update Post (`PATCH /api/contlify/v1/posts/:id` & `PUT /api/contlify/v1/posts/:id`)
+## 3. Get Single Post (`GET /posts/:id`)
 
-Updates an existing post by its ID or slug. Supports partial updates via `PATCH`.
+Fetches a single post by its ID or slug.
+
+### Request Example
+```bash
+curl -X GET "https://yourwebsite.com/api/contlify/v1/posts/building-with-contlify" \
+  -H "X-Contlify-Key: your_secret_api_key"
+```
+
+### Success Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "post_1724789000",
+    "slug": "building-with-contlify",
+    "title": "Building with Contlify",
+    "content": "<h2>Hello World</h2><p>Article content goes here.</p>",
+    "status": "published",
+    "author": {
+      "name": "Alex Smith",
+      "slug": "alex-smith"
+    },
+    "categories": [
+      { "name": "Engineering", "slug": "engineering" }
+    ],
+    "tags": [
+      { "name": "TypeScript", "slug": "typescript" }
+    ],
+    "createdAt": "2026-09-01T12:00:00.000Z",
+    "updatedAt": "2026-09-01T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+## 4. Update Post (`PATCH /posts/:id` & `PUT /posts/:id`)
+
+Updates an existing post by its ID or slug.
 
 ### Path Parameters
-- `id` (string, Required): The post ID or slug.
+- `id` (string, Required): Post ID or Slug.
 
 ### Request Body Example
 ```json
 {
   "title": "Building with Contlify (Updated Edition)",
-  "content": "<h2>Updated Guide</h2><p>New content.</p>",
-  "status": "published"
+  "excerpt": "Updated summary of the article."
 }
 ```
 
@@ -176,7 +217,6 @@ Updates an existing post by its ID or slug. Supports partial updates via `PATCH`
 {
   "status": "success",
   "post_id": "building-with-contlify",
-  "slug": "building-with-contlify",
   "post_url": "/blog/building-with-contlify",
   "data": {
     "postId": "building-with-contlify",
@@ -190,15 +230,15 @@ Updates an existing post by its ID or slug. Supports partial updates via `PATCH`
 
 ---
 
-## 4. Get Taxonomies (`GET /authors`, `GET /categories`, `GET /tags`)
+## 5. Taxonomies (`GET /categories`, `GET /tags`, `GET /authors`)
 
 ### Retrieve Categories
 ```bash
 curl -X GET "https://yourwebsite.com/api/contlify/v1/categories" \
-  -H "x-api-key: your_secret_api_key"
+  -H "X-Contlify-Key: your_secret_api_key"
 ```
 
-#### Success Response (`200 OK`)
+### Success Response (`200 OK`)
 ```json
 {
   "success": true,
@@ -207,9 +247,24 @@ curl -X GET "https://yourwebsite.com/api/contlify/v1/categories" \
       "id": "cat_engineering",
       "name": "Engineering",
       "slug": "engineering",
-      "coverImage": "https://example.com/cover.jpg",
-      "createdAt": "2026-08-27T00:00:00.000Z"
+      "description": "Technical tutorials",
+      "postCount": 12,
+      "coverImage": "https://example.com/cover.jpg"
     }
-  ]
+  ],
+  "meta": {
+    "timestamp": "2026-09-01T00:00:00.000Z"
+  }
 }
+```
+
+### Update Category (`PATCH /categories/:id` & `PUT /categories/:id`)
+```bash
+curl -X PATCH "https://yourwebsite.com/api/contlify/v1/categories/engineering" \
+  -H "X-Contlify-Key: your_secret_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated category description",
+    "coverImage": "https://example.com/new-cover.jpg"
+  }'
 ```

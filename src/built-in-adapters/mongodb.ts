@@ -1,5 +1,6 @@
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { AdapterError } from "../errors/adapter-error.js";
+import { NotFoundError } from "../errors/not-found-error.js";
 import { extractImageUrl } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
 
@@ -253,6 +254,18 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         }
       }
 
+      // Upsert tags into contlify_tags collection
+      const tagsCol = await getTagsCol();
+      if (tagsCol && tagsDocs.length > 0) {
+        for (const tag of tagsDocs) {
+          await tagsCol.updateOne(
+            { slug: tag.slug },
+            { $set: { id: tag.id, name: tag.name, slug: tag.slug, updatedAt: now } },
+            { upsert: true }
+          );
+        }
+      }
+
       // Upsert author into contlify_authors collection
       const authorsCol = await getAuthorsCol();
       if (authorsCol && authorDoc) {
@@ -264,7 +277,6 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
       }
 
       return {
-
         postId: id,
         slug,
         status: (payload.status as PublishResponse["status"]) ?? "published",
@@ -305,10 +317,116 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         update.slug = slugify((payload.custom_slug ?? payload.slug) as string);
       }
 
-      await posts.updateOne(
-        { $or: [{ id: idOrSlug }, { slug: idOrSlug }] } as Record<string, unknown>,
+      if (payload.categories !== undefined) {
+        const rawCategories = Array.isArray(payload.categories) ? payload.categories : [];
+        const categoriesDocs = rawCategories.map((c) => {
+          if (typeof c === "string") {
+            const s = slugify(c);
+            return { id: `cat_${s}`, name: c, slug: s };
+          }
+          const catObj = c as Record<string, unknown>;
+          const name = (catObj.name as string | undefined) || "";
+          const slug = catObj.slug ? slugify(catObj.slug as string) : slugify(name);
+          const catImg = extractImageUrl(catObj.coverImage ?? catObj.cover_image ?? catObj.image ?? catObj.imageUrl);
+          return {
+            id: (catObj.id as string | undefined) || (catObj.externalId as string | undefined) || `cat_${slug}`,
+            name,
+            slug,
+            description: catObj.description as string | undefined,
+            ...(catImg ? { coverImage: catImg } : {}),
+            parentId: catObj.parentId as string | undefined,
+          };
+        });
+        update.categories = categoriesDocs;
+
+        const categoriesCol = await getCategoriesCol();
+        if (categoriesCol && categoriesDocs.length > 0) {
+          for (const cat of categoriesDocs) {
+            const catCoverImg = extractImageUrl((cat as any).coverImage ?? (cat as any).cover_image ?? (cat as any).image ?? (cat as any).imageUrl);
+            await categoriesCol.updateOne(
+              { slug: cat.slug },
+              { $set: { id: cat.id, name: cat.name, slug: cat.slug, ...(catCoverImg ? { coverImage: catCoverImg } : {}), updatedAt: now } },
+              { upsert: true }
+            );
+          }
+        }
+      }
+
+      if (payload.tags !== undefined) {
+        const rawTags = Array.isArray(payload.tags) ? payload.tags : [];
+        const tagsDocs = rawTags.map((t) => {
+          if (typeof t === "string") {
+            const s = slugify(t);
+            return { id: `tag_${s}`, name: t, slug: s };
+          }
+          const tagObj = t as Record<string, unknown>;
+          const name = (tagObj.name as string | undefined) || "";
+          const slug = tagObj.slug ? slugify(tagObj.slug as string) : slugify(name);
+          return {
+            id: (tagObj.id as string | undefined) || (tagObj.externalId as string | undefined) || `tag_${slug}`,
+            name,
+            slug,
+            description: tagObj.description as string | undefined,
+          };
+        });
+        update.tags = tagsDocs;
+
+        const tagsCol = await getTagsCol();
+        if (tagsCol && tagsDocs.length > 0) {
+          for (const tag of tagsDocs) {
+            await tagsCol.updateOne(
+              { slug: tag.slug },
+              { $set: { id: tag.id, name: tag.name, slug: tag.slug, updatedAt: now } },
+              { upsert: true }
+            );
+          }
+        }
+      }
+
+      if (payload.author !== undefined) {
+        let authorDoc: Record<string, unknown> | null = null;
+        if (typeof payload.author === "string") {
+          const authorSlug = slugify(payload.author);
+          authorDoc = {
+            id: `author_${authorSlug}`,
+            name: payload.author,
+            slug: authorSlug,
+          };
+        } else if (payload.author && typeof payload.author === "object") {
+          const authorObj = payload.author as Record<string, unknown>;
+          const authName = (authorObj.name as string | undefined) || "";
+          const authSlug = authorObj.slug ? slugify(authorObj.slug as string) : slugify(authName);
+          const authorAvatar = extractImageUrl(authorObj.avatar ?? authorObj.image ?? authorObj.avatarUrl);
+          authorDoc = {
+            id: (authorObj.id as string | undefined) || (authorObj.externalId as string | undefined) || `author_${authSlug}`,
+            name: authName,
+            slug: authSlug,
+            email: authorObj.email,
+            bio: authorObj.bio,
+            ...(authorAvatar ? { avatar: authorAvatar } : {}),
+            socialLinks: authorObj.socialLinks,
+          };
+        }
+        update.author = authorDoc;
+
+        const authorsCol = await getAuthorsCol();
+        if (authorsCol && authorDoc) {
+          await authorsCol.updateOne(
+            { slug: (authorDoc as any).slug },
+            { $set: { ...authorDoc, updatedAt: now } },
+            { upsert: true }
+          );
+        }
+      }
+
+      const result = await (posts.updateOne as any)(
+        { $or: [{ id: idOrSlug }, { slug: idOrSlug }] },
         { $set: update }
       );
+
+      if (result && typeof result.matchedCount === "number" && result.matchedCount === 0) {
+        throw new NotFoundError(`Post not found with ID or slug: ${idOrSlug}`);
+      }
 
       const newSlug = (update.slug as string | undefined) ?? idOrSlug;
       return {
@@ -319,7 +437,6 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         url: `/blog/post/${newSlug}`,
       };
     },
-
 
     async getAllPosts(options?: PostQueryOptions): Promise<Post[]> {
       try {
@@ -387,7 +504,14 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         const posts = await getPostsCol();
         if (!posts) return null;
 
-        const doc = await posts.findOne({ id });
+        const nowIso = new Date().toISOString();
+        const doc = await posts.findOne({
+          id,
+          $or: [
+            { status: "published" },
+            { status: "scheduled", publishedAt: { $lte: nowIso } }
+          ]
+        });
         if (!doc) return null;
         return docToPost(doc);
       } catch {

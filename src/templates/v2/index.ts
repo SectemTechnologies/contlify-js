@@ -26,6 +26,7 @@ export interface V2ScaffoldOptions {
   migrationMode?: V2MigrationMode;
   postgresDeployment?: PostgresDeployment;
   supabaseMode?: SupabaseConnectionMode;
+  baseDir?: string;
 }
 
 /**
@@ -33,7 +34,7 @@ export interface V2ScaffoldOptions {
  * The scaffolder applies src/ prefix for src/app layouts automatically.
  */
 export function getNextjsV2ScaffoldManifest(options: V2ScaffoldOptions): ScaffoldFileEntry[] {
-  const { dbType, migrationMode = "skip", postgresDeployment = "cloudflare", supabaseMode = "postgres" } = options;
+  const { dbType, migrationMode = "skip", postgresDeployment = "cloudflare", supabaseMode = "postgres", baseDir = "src" } = options;
   return [
     {
       relativePath: "contlify.config.ts",
@@ -42,7 +43,7 @@ export function getNextjsV2ScaffoldManifest(options: V2ScaffoldOptions): Scaffol
     },
     {
       relativePath: "app/api/contlify/v1/[...path]/route.ts",
-      getContent: getNextjsV2RouteTemplate,
+      getContent: () => getNextjsV2RouteTemplate(baseDir),
       description: "Next.js App Router gateway (thin bridge to Contlify library)",
     },
   ];

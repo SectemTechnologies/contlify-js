@@ -223,12 +223,13 @@ function enableAutoMigrateInConfigFile(configPath: string): boolean {
 function getMigrationInstructions(dbType: SupportedDatabaseType, sqlFilePath: string): string {
   switch (dbType) {
     case "postgres":
+      return `  psql "$DATABASE_URL" -f ${sqlFilePath}\n  Or paste in Neon / Railway SQL Console.`;
     case "supabase":
-      return `  psql "$DATABASE_URL" -f ${sqlFilePath}`;
+      return `  Paste the contents of ${sqlFilePath} into the Supabase SQL Editor.`;
     case "d1":
       return `  npx wrangler d1 execute <database_name> --file=${sqlFilePath}`;
     case "mongodb":
-      return "";
+      return "  MongoDB requires no migrations.";
   }
 }
 
