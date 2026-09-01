@@ -71,6 +71,19 @@ describe("Framework Auto-Detector (detectFramework)", () => {
     expect(detectFramework(tempDir)).toBe("react-router");
   });
 
+  it("should detect Angular when angular.json exists", () => {
+    fs.writeFileSync(path.join(tempDir, "angular.json"), JSON.stringify({}));
+    expect(detectFramework(tempDir)).toBe("angular");
+  });
+
+  it("should detect Angular via package.json dependencies", () => {
+    fs.writeFileSync(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ dependencies: { "@angular/core": "^19.0.0" } })
+    );
+    expect(detectFramework(tempDir)).toBe("angular");
+  });
+
   it("should detect Next.js when src/app layout exists without configs", () => {
     fs.mkdirSync(path.join(tempDir, "src", "app"), { recursive: true });
     expect(detectFramework(tempDir)).toBe("nextjs");

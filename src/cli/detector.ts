@@ -7,10 +7,21 @@ import type { ContlifyFramework } from "../templates/framework.js";
  * Checks configuration files, package.json dependencies, and directory structures.
  *
  * @param projectRoot Absolute path to the user's project root directory.
- * @returns Detected framework ("nextjs" | "astro" | "react-router") or null if unrecognized.
+ * @returns Detected framework ("nextjs" | "astro" | "react-router" | "angular") or null if unrecognized.
  */
 export function detectFramework(projectRoot: string): ContlifyFramework | null {
-  // 1. Check for Astro configuration files
+  // 1. Check for Angular configuration files
+  const angularConfigFiles = [
+    "angular.json",
+    ".angular-cli.json",
+  ];
+  for (const file of angularConfigFiles) {
+    if (fs.existsSync(path.join(projectRoot, file))) {
+      return "angular";
+    }
+  }
+
+  // 2. Check for Astro configuration files
   const astroConfigFiles = [
     "astro.config.mjs",
     "astro.config.ts",
@@ -23,7 +34,7 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 2. Check for React Router v7 configuration files
+  // 3. Check for React Router v7 configuration files
   const reactRouterConfigFiles = [
     "react-router.config.ts",
     "react-router.config.js",
@@ -35,7 +46,7 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 3. Check for Next.js configuration files
+  // 4. Check for Next.js configuration files
   const nextConfigFiles = [
     "next.config.js",
     "next.config.mjs",
@@ -47,7 +58,7 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 4. Inspect package.json dependencies and devDependencies
+  // 5. Inspect package.json dependencies and devDependencies
   const pkgPath = path.join(projectRoot, "package.json");
   if (fs.existsSync(pkgPath)) {
     try {
@@ -58,6 +69,9 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
       };
       const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
 
+      if ("@angular/core" in allDeps || "@angular/ssr" in allDeps || "@angular/cli" in allDeps) {
+        return "angular";
+      }
       if ("astro" in allDeps) {
         return "astro";
       }
@@ -75,7 +89,7 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
     }
   }
 
-  // 5. Fallback: inspect directory structures
+  // 6. Fallback: inspect directory structures
   if (
     fs.existsSync(path.join(projectRoot, "src", "app")) ||
     fs.existsSync(path.join(projectRoot, "app"))

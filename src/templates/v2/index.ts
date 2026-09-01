@@ -12,12 +12,14 @@ import { getContlifyConfigTemplate, type V2MigrationMode, type PostgresDeploymen
 import { getNextjsV2RouteTemplate } from "./nextjs-route.template.js";
 import { getAstroV2RouteTemplate } from "./astro-route.template.js";
 import { getReactRouterV2RouteTemplate } from "./react-router-route.template.js";
+import { getAngularV2RouteTemplate } from "./angular-route.template.js";
 
 export type { V2MigrationMode, PostgresDeployment, SupabaseConnectionMode } from "./contlify-config.template.js";
 export { getContlifyConfigTemplate } from "./contlify-config.template.js";
 export { getNextjsV2RouteTemplate } from "./nextjs-route.template.js";
 export { getAstroV2RouteTemplate } from "./astro-route.template.js";
 export { getReactRouterV2RouteTemplate } from "./react-router-route.template.js";
+export { getAngularV2RouteTemplate } from "./angular-route.template.js";
 
 export interface V2ScaffoldOptions {
   dbType: SupportedDatabaseType;
@@ -35,7 +37,7 @@ export function getNextjsV2ScaffoldManifest(options: V2ScaffoldOptions): Scaffol
   return [
     {
       relativePath: "contlify.config.ts",
-      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode),
+      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode, "nextjs"),
       description: "Contlify declarative configuration (database, API key, URL pattern)",
     },
     {
@@ -54,7 +56,7 @@ export function getAstroV2ScaffoldManifest(options: V2ScaffoldOptions): Scaffold
   return [
     {
       relativePath: "contlify.config.ts",
-      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode),
+      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode, "astro"),
       description: "Contlify declarative configuration (database, API key, URL pattern)",
     },
     {
@@ -73,13 +75,32 @@ export function getReactRouterV2ScaffoldManifest(options: V2ScaffoldOptions): Sc
   return [
     {
       relativePath: "contlify.config.ts",
-      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode),
+      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode, "react-router"),
       description: "Contlify declarative configuration (database, API key, URL pattern)",
     },
     {
       relativePath: "app/routes/api.contlify.$.ts",
       getContent: getReactRouterV2RouteTemplate,
       description: "React Router v7 catch-all gateway (thin bridge to Contlify library)",
+    },
+  ];
+}
+
+/**
+ * Angular SSR v2 scaffold manifest (2 files only).
+ */
+export function getAngularV2ScaffoldManifest(options: V2ScaffoldOptions): ScaffoldFileEntry[] {
+  const { dbType, migrationMode = "skip", postgresDeployment = "node", supabaseMode = "postgres" } = options;
+  return [
+    {
+      relativePath: "contlify.config.ts",
+      getContent: () => getContlifyConfigTemplate(dbType, migrationMode, postgresDeployment, supabaseMode, "angular"),
+      description: "Contlify declarative configuration (database, API key, URL pattern)",
+    },
+    {
+      relativePath: "server.contlify.ts",
+      getContent: getAngularV2RouteTemplate,
+      description: "Angular SSR Express gateway (mounts Contlify onto server.ts)",
     },
   ];
 }
@@ -92,6 +113,8 @@ export function getV2ScaffoldManifest(
   options: V2ScaffoldOptions
 ): ScaffoldFileEntry[] {
   switch (framework) {
+    case "angular":
+      return getAngularV2ScaffoldManifest(options);
     case "astro":
       return getAstroV2ScaffoldManifest(options);
     case "react-router":

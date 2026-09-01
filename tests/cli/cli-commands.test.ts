@@ -149,8 +149,8 @@ describe("CLI Commands (v2 Hybrid Architecture)", () => {
 
       const configContent = fs.readFileSync(path.join(tempDir, "contlify.config.ts"), "utf-8");
       expect(configContent).toContain('driver: "mongodb"');
-      expect(configContent).toContain('uri: process.env.MONGODB_URI');
-      expect(configContent).toContain('dbName: process.env.MONGODB_DB_NAME ?? "contlify"');
+      expect(configContent).toContain('uri: process.env["MONGODB_URI"]');
+      expect(configContent).toContain('dbName: process.env["MONGODB_DB_NAME"] ?? "contlify"');
       expect(configContent).toContain('deployment: "cloudflare"');
       expect(configContent).not.toContain('dbProvider');
 

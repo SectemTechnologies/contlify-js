@@ -54,14 +54,14 @@ CREATE TABLE IF NOT EXISTS contlify_tags (
 );
 
 CREATE TABLE IF NOT EXISTS contlify_post_categories (
-  post_id     VARCHAR(255) REFERENCES contlify_posts(id) ON DELETE CASCADE,
-  category_id VARCHAR(255) REFERENCES contlify_categories(id) ON DELETE CASCADE,
+  post_id     VARCHAR(255) REFERENCES contlify_posts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  category_id VARCHAR(255) REFERENCES contlify_categories(id) ON DELETE CASCADE ON UPDATE CASCADE,
   PRIMARY KEY (post_id, category_id)
 );
 
 CREATE TABLE IF NOT EXISTS contlify_post_tags (
-  post_id VARCHAR(255) REFERENCES contlify_posts(id) ON DELETE CASCADE,
-  tag_id  VARCHAR(255) REFERENCES contlify_tags(id) ON DELETE CASCADE,
+  post_id VARCHAR(255) REFERENCES contlify_posts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  tag_id  VARCHAR(255) REFERENCES contlify_tags(id) ON DELETE CASCADE ON UPDATE CASCADE,
   PRIMARY KEY (post_id, tag_id)
 );
 

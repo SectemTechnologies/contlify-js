@@ -7,10 +7,12 @@ import {
   getNextjsV2ScaffoldManifest,
   getAstroV2ScaffoldManifest,
   getReactRouterV2ScaffoldManifest,
+  getAngularV2ScaffoldManifest,
   getContlifyConfigTemplate,
   getNextjsV2RouteTemplate,
   getAstroV2RouteTemplate,
   getReactRouterV2RouteTemplate,
+  getAngularV2RouteTemplate,
 } from "../../src/templates/v2/index.js";
 import { scaffoldProjectV2 } from "../../src/cli/scaffolder.js";
 
@@ -44,18 +46,26 @@ describe("v2 Scaffold Templates & Manifests", () => {
       expect(content).not.toContain("autoMigrate: true");
     });
 
-    it("should generate valid config for d1", () => {
-      const content = getContlifyConfigTemplate("d1", "skip");
+    it("should generate valid config for d1 (nextjs)", () => {
+      const content = getContlifyConfigTemplate("d1", "skip", "cloudflare", "postgres", "nextjs");
       expect(content).toContain('driver: "d1"');
       expect(content).toContain('dbProvider');
       expect(content).toContain('getCloudflareContext');
     });
 
+    it("should generate valid config for d1 (astro / standard)", () => {
+      const content = getContlifyConfigTemplate("d1", "skip", "cloudflare", "postgres", "astro");
+      expect(content).toContain('driver: "d1"');
+      expect(content).toContain('dbProvider');
+      expect(content).not.toContain('getCloudflareContext');
+      expect(content).toContain('globalThis');
+    });
+
     it("should generate valid config for mongodb (cloudflare)", () => {
       const content = getContlifyConfigTemplate("mongodb", "skip", "cloudflare");
       expect(content).toContain('driver: "mongodb"');
-      expect(content).toContain('uri: process.env.MONGODB_URI');
-      expect(content).toContain('dbName: process.env.MONGODB_DB_NAME ?? "contlify"');
+      expect(content).toContain('uri: process.env["MONGODB_URI"]');
+      expect(content).toContain('dbName: process.env["MONGODB_DB_NAME"] ?? "contlify"');
       expect(content).toContain('deployment: "cloudflare"');
       expect(content).not.toContain('dbProvider');
     });
@@ -63,8 +73,8 @@ describe("v2 Scaffold Templates & Manifests", () => {
     it("should generate valid config for mongodb (node)", () => {
       const content = getContlifyConfigTemplate("mongodb", "skip", "node");
       expect(content).toContain('driver: "mongodb"');
-      expect(content).toContain('uri: process.env.MONGODB_URI');
-      expect(content).toContain('dbName: process.env.MONGODB_DB_NAME ?? "contlify"');
+      expect(content).toContain('uri: process.env["MONGODB_URI"]');
+      expect(content).toContain('dbName: process.env["MONGODB_DB_NAME"] ?? "contlify"');
       expect(content).not.toContain('deployment: "cloudflare"');
       expect(content).not.toContain('dbProvider');
     });
@@ -106,6 +116,17 @@ describe("v2 Scaffold Templates & Manifests", () => {
       expect(content).toContain("export const loader = async");
       expect(content).toContain("export const action = async");
     });
+
+    it("should generate Angular v2 route with mountContlify", () => {
+      const content = getAngularV2RouteTemplate();
+      expect(content).toContain('import "./contlify.config";');
+      expect(content).toContain("createContlifyHandler");
+      expect(content).toContain("createNodeMiddleware");
+      expect(content).toContain("getAllPosts");
+      expect(content).toContain("getCategories");
+      expect(content).toContain("const contlifyHandler = createContlifyHandler();");
+      expect(content).toContain("export function mountContlify(app: Express): void");
+    });
   });
 
   describe("v2 Manifests (Exactly 2 files per framework)", () => {
@@ -130,10 +151,18 @@ describe("v2 Scaffold Templates & Manifests", () => {
       expect(manifest[1].relativePath).toBe("app/routes/api.contlify.$.ts");
     });
 
+    it("Angular manifest should have exactly 2 files", () => {
+      const manifest = getAngularV2ScaffoldManifest({ dbType: "postgres" });
+      expect(manifest).toHaveLength(2);
+      expect(manifest[0].relativePath).toBe("contlify.config.ts");
+      expect(manifest[1].relativePath).toBe("server.contlify.ts");
+    });
+
     it("getV2ScaffoldManifest dispatcher routes correctly", () => {
       expect(getV2ScaffoldManifest("nextjs", { dbType: "postgres" })[1].relativePath).toContain("app/api/contlify/v1");
       expect(getV2ScaffoldManifest("astro", { dbType: "postgres" })[1].relativePath).toContain("src/pages/api/contlify/v1");
       expect(getV2ScaffoldManifest("react-router", { dbType: "postgres" })[1].relativePath).toContain("app/routes/api.contlify");
+      expect(getV2ScaffoldManifest("angular", { dbType: "postgres" })[1].relativePath).toContain("server.contlify.ts");
     });
   });
 
@@ -212,6 +241,20 @@ describe("v2 Scaffold Templates & Manifests", () => {
       const configResult = results.find((r) => r.relativePath === "contlify.config.ts");
       expect(configResult?.status).toBe("created");
       expect(fs.readFileSync(path.join(tempDir, "contlify.config.ts"), "utf-8")).toContain("defineConfig");
+    });
+
+    it("should scaffold exactly 2 files for Angular", () => {
+      const results = scaffoldProjectV2({
+        projectRoot: tempDir,
+        framework: "angular",
+        dbType: "postgres",
+        postgresDeployment: "node",
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results.every((r) => r.status === "created")).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "contlify.config.ts"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, "server.contlify.ts"))).toBe(true);
     });
   });
 });
