@@ -341,7 +341,7 @@ curl -X PATCH "https://yourdomain.com/api/contlify/v1/posts/my-first-post" \
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/SectemTechnologies/Next.js-Package/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/SectemTechnologies/contlify-js/issues).
 
 ---
 

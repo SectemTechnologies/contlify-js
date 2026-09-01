@@ -529,6 +529,6 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log(bold("  How to use Contlify in your pages:"));
   log(`  ${dim('import { getAllPosts, getPostBySlug, getCategories } from "contlify";')}`);
   log("");
-  log(dim("  Docs: https://github.com/SectemTechnologies/Next.js-Package#readme"));
+  log(dim("  Docs: https://github.com/SectemTechnologies/contlify-js#readme"));
   log("");
 }

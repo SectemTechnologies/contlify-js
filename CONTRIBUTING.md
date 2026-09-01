@@ -4,12 +4,6 @@ Thank you for your interest in contributing to **Contlify**! We welcome bug repo
 
 ---
 
-## Code of Conduct
-
-All contributors are expected to adhere to our [Code of Conduct](./CODE_OF_CONDUCT.md). Please read it before participating.
-
----
-
 ## Development Setup
 
 ### Prerequisites
@@ -20,8 +14,8 @@ All contributors are expected to adhere to our [Code of Conduct](./CODE_OF_CONDU
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/SectemTechnologies/Next.js-Package.git
-   cd contlify
+   git clone https://github.com/SectemTechnologies/contlify-js.git
+   cd contlify-js
    ```
 
 2. Install dependencies:

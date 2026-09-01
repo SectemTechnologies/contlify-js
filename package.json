@@ -32,12 +32,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SectemTechnologies/Next.js-Package.git"
+    "url": "git+https://github.com/SectemTechnologies/contlify-js.git"
   },
   "bugs": {
-    "url": "https://github.com/SectemTechnologies/Next.js-Package/issues"
+    "url": "https://github.com/SectemTechnologies/contlify-js/issues"
   },
-  "homepage": "https://github.com/SectemTechnologies/Next.js-Package#readme",
+  "homepage": "https://github.com/SectemTechnologies/contlify-js#readme",
   "keywords": [
     "contlify",
     "cms",
