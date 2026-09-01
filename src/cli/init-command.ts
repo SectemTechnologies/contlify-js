@@ -29,6 +29,7 @@ const FRAMEWORK_CHOICES: { label: string; value: ContlifyFramework }[] = [
   { label: "Next.js (App Router)", value: "nextjs" },
   { label: "Astro", value: "astro" },
   { label: "React Router v7 (Framework Mode)", value: "react-router" },
+  { label: "Angular (SSR)", value: "angular" },
 ];
 
 const DB_CHOICES: { label: string; value: SupportedDatabaseType }[] = [
@@ -59,7 +60,8 @@ const MONGO_HOSTING_CHOICES: { label: string; value: PostgresDeployment }[] = [
  */
 function getDbPackage(
   dbType: SupportedDatabaseType,
-  postgresDeployment?: PostgresDeployment
+  postgresDeployment?: PostgresDeployment,
+  framework?: ContlifyFramework
 ): string | null {
   switch (dbType) {
     case "postgres":
@@ -67,7 +69,7 @@ function getDbPackage(
     case "supabase":
       return "@supabase/supabase-js";
     case "d1":
-      return "@opennextjs/cloudflare";
+      return framework === "nextjs" ? "@opennextjs/cloudflare" : null;
     case "mongodb":
       return "mongodb";
   }
@@ -216,6 +218,80 @@ function patchReactRouterRoutes(projectRoot: string): boolean {
 }
 
 /**
+ * Patches Angular SSR server.ts to register the Contlify Express middleware.
+ */
+function patchAngularServer(projectRoot: string): boolean {
+  const possiblePaths = [
+    path.join(projectRoot, "server.ts"),
+    path.join(projectRoot, "src", "server.ts"),
+  ];
+
+  let serverPath: string | null = null;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      serverPath = p;
+      break;
+    }
+  }
+
+  if (!serverPath) return false;
+
+  let content = fs.readFileSync(serverPath, "utf-8");
+  if (content.includes("contlify") || content.includes("mountContlify")) {
+    return false; // already patched
+  }
+
+  const importStatement = `import { mountContlify } from "./server.contlify";\n`;
+  content = importStatement + content;
+
+  if (content.includes("const app = express();")) {
+    content = content.replace(
+      "const app = express();",
+      `const app = express();\n\n// Mount Contlify Publishing API\nmountContlify(app);`
+    );
+  } else if (content.includes("app.use(")) {
+    content = content.replace(
+      /(\s*)(app\.use\()/,
+      `$1// Mount Contlify Publishing API\n$1mountContlify(app);\n\n$1$2`
+    );
+  } else {
+    content += `\n// Mount Contlify Publishing API\nmountContlify(app);\n`;
+  }
+
+  fs.writeFileSync(serverPath, content, "utf-8");
+  return true;
+}
+
+/**
+ * Patches Angular angular.json to add externalDependencies for server database drivers.
+ */
+function patchAngularJson(projectRoot: string): boolean {
+  const angularJsonPath = path.join(projectRoot, "angular.json");
+  if (!fs.existsSync(angularJsonPath)) return false;
+
+  try {
+    const raw = fs.readFileSync(angularJsonPath, "utf-8");
+    const json = JSON.parse(raw);
+    const projects = json.projects || {};
+    const defaultProjectKey = Object.keys(projects)[0];
+    if (!defaultProjectKey) return false;
+
+    const buildOptions = projects[defaultProjectKey]?.architect?.build?.options;
+    if (!buildOptions) return false;
+
+    const requiredDrivers = ["mongodb", "pg", "@neondatabase/serverless", "@supabase/supabase-js", "dotenv"];
+    const current = Array.isArray(buildOptions.externalDependencies) ? buildOptions.externalDependencies : [];
+    const merged = Array.from(new Set([...current, ...requiredDrivers]));
+
+    buildOptions.externalDependencies = merged;
+    fs.writeFileSync(angularJsonPath, JSON.stringify(json, null, 2), "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * `contlify init` — interactive v2 project setup command.
  * Generates only:
  *   1. contlify.config.ts (project root)
@@ -288,8 +364,10 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     log(`     ${dim("app/api/contlify/v1/[...path]/route.ts")} — Next.js App Router gateway`);
   } else if (framework === "astro") {
     log(`     ${dim("src/pages/api/contlify/v1/[...path].ts")} — Astro API endpoint gateway`);
-  } else {
+  } else if (framework === "react-router") {
     log(`     ${dim("app/routes/api.contlify.$.ts")} — React Router v7 gateway`);
+  } else if (framework === "angular") {
+    log(`     ${dim("server.contlify.ts")} — Angular SSR Express gateway`);
   }
   log("");
 
@@ -300,7 +378,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   }
 
   // Step 5: Install the required database driver
-  const dbPkg = getDbPackage(dbType, postgresDeployment);
+  const dbPkg = getDbPackage(dbType, postgresDeployment, framework);
   if (dbPkg) {
     log("");
     info(`  📦 Installing ${dbPkg}...`);
@@ -352,6 +430,17 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     }
   }
 
+  if (framework === "angular") {
+    const patchedServer = patchAngularServer(projectRoot);
+    if (patchedServer) {
+      success("  ✅ Angular server.ts registered with Contlify Express middleware.");
+    }
+    const patchedJson = patchAngularJson(projectRoot);
+    if (patchedJson) {
+      success("  ✅ angular.json patched with externalDependencies for database drivers.");
+    }
+  }
+
   // Step 8: Handle migration mode
   log("");
   if (migrationMode === "auto") {
@@ -388,12 +477,13 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("");
   success("  ✅ Contlify setup complete!");
   log("");
+  const devCmd = framework === "angular" ? "npm start" : "npm run dev";
   log(bold("  Next steps:"));
   if (dbType === "supabase") {
     log("  1. Open Supabase Dashboard → SQL Editor → New query");
     log("  2. Paste and run schema.sql to create tables");
     log("  3. Add SUPABASE_URL and SUPABASE_SECRET_KEY to .env.local");
-    log("  4. Run: npm run dev");
+    log(`  4. Run: ${devCmd}`);
   } else if (dbType === "mongodb") {
     if (postgresDeployment === "cloudflare") {
       log("  1. Add your Standard (non-SRV) MongoDB URI to secrets / .env.local:");
@@ -408,7 +498,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
       log(`  ${dim("   → Run: npx wrangler secret put MONGODB_URI")}`);
       log("");
       log("  2. Collections are created automatically on first insert — no schema needed.");
-      log("  3. Run: npm run dev");
+      log(`  3. Run: ${devCmd}`);
     } else {
       log("  1. Add your MongoDB URI to .env.local:");
       log(`  ${dim("   MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net")}`);
@@ -416,15 +506,15 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
       log(`  ${dim("   CONTLIFY_API_KEY=your_secret_api_key")}`);
       log("");
       log("  2. Collections are created automatically on first insert — no schema needed.");
-      log("  3. Run: npm run dev");
+      log(`  3. Run: ${devCmd}`);
     }
   } else if (migrationMode !== "auto") {
     log("  1. Apply the schema to your database");
     log("  2. Add env variables to .env.local");
-    log("  3. Run: npm run dev");
+    log(`  3. Run: ${devCmd}`);
   } else {
     log("  1. Add env variables to .env.local");
-    log("  2. Run: npm run dev (tables are created automatically on cold start!)");
+    log(`  2. Run: ${devCmd} (tables are created automatically on cold start!)`);
   }
   log("");
   log(bold("  How to use Contlify in your pages:"));

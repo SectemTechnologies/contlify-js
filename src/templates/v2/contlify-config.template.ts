@@ -14,6 +14,7 @@
  */
 
 import type { SupportedDatabaseType } from "../../migrations/index.js";
+import type { ContlifyFramework } from "../framework.js";
 
 export type V2MigrationMode = "auto" | "sql" | "skip";
 
@@ -65,7 +66,7 @@ function getClientBlock(
 // neon() uses Neon's serverless HTTP API — one HTTP call per query, fully stateless.
 // Unlike WebSocket pools, it never caches connections across requests, so Cloudflare's
 // per-request I/O isolation is never violated (no Error 1101, no cross-request errors).
-const _sql = neon(process.env.DATABASE_URL!);
+const _sql = neon(process.env["DATABASE_URL"]!);
 
 const neonHttpClient = {
   async query<T = Record<string, unknown>>(
@@ -81,7 +82,7 @@ const neonHttpClient = {
       return `
 // Standard pg Pool — works on Node.js, Vercel, Railway, Render, and Docker.
 // Do NOT use this on Cloudflare Workers; use the Cloudflare deployment option instead.
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env["DATABASE_URL"] });
 `;
     case "supabase":
       return `
@@ -89,8 +90,8 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 let _supabaseClient: ReturnType<typeof createClient> | null = null;
 
 function getSupabaseClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY;
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_SECRET_KEY"];
   if (!url || !key) return null;
   if (!_supabaseClient) {
     _supabaseClient = createClient(url, key);
@@ -107,7 +108,8 @@ function getSupabaseClient() {
 
 function getStorageBlock(
   dbType: SupportedDatabaseType,
-  postgresDeployment?: PostgresDeployment
+  postgresDeployment?: PostgresDeployment,
+  framework?: ContlifyFramework
 ): string {
   switch (dbType) {
     case "postgres":
@@ -125,14 +127,15 @@ function getStorageBlock(
     case "supabase":
       return `  storage: {
     driver: "supabase",
-    // Lazily resolves the Supabase client per-request, preventing Next.js build-time evaluation errors.
+    // Lazily resolves the Supabase client per-request, preventing build-time evaluation errors.
     client: getSupabaseClient,
   },`;
 
     case "d1":
-      return `  storage: {
+      if (framework === "nextjs") {
+        return `  storage: {
     driver: "d1",
-    // Lazily resolves the Cloudflare D1 binding per-request.
+    // Lazily resolves the Cloudflare D1 binding per-request via OpenNext context.
     // Prevents top-level socket errors (Cloudflare Error 1101).
     dbProvider: async () => {
       try {
@@ -140,9 +143,16 @@ function getStorageBlock(
         const ctx = await getCloudflareContext();
         return ctx?.env as any;
       } catch {
-        // Fallback for raw Cloudflare Workers or local wrangler dev
         return (globalThis as any).DB ?? null;
       }
+    },
+  },`;
+      }
+      return `  storage: {
+    driver: "d1",
+    // Lazily resolves the Cloudflare D1 database binding from the runtime environment.
+    dbProvider: async () => {
+      return (globalThis as any).DB ?? (process.env as any)["DB"] ?? null;
     },
   },`;
 
@@ -150,15 +160,15 @@ function getStorageBlock(
       if (postgresDeployment === "cloudflare") {
         return `  storage: {
     driver: "mongodb",
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
+    uri: process.env["MONGODB_URI"],
+    dbName: process.env["MONGODB_DB_NAME"] ?? "contlify",
     deployment: "cloudflare",
   },`;
       }
       return `  storage: {
     driver: "mongodb",
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
+    uri: process.env["MONGODB_URI"],
+    dbName: process.env["MONGODB_DB_NAME"] ?? "contlify",
   },`;
   }
 }
@@ -190,13 +200,12 @@ function getEnvComment(
 // CONTLIFY_API_KEY=your_secret_api_key
 `;
       }
-      return `// Required environment variables:
-// DATABASE_URL=postgresql://user:password@host/dbname
+      return `// Required environment variables (add to .env.local):
+// DATABASE_URL=postgresql://user:password@localhost:5432/mydb
 // CONTLIFY_API_KEY=your_secret_api_key
 `;
     case "supabase":
-      return `// Note: PostgREST HTTP does not support DDL table creation.
-// Apply schema.sql in Supabase Dashboard: SQL Editor -> New Query.
+      return `// Note: Ensure your Supabase project URL & Secret Key are configured
 //
 // Required environment variables:
 // SUPABASE_URL=https://your-project.supabase.co
@@ -248,11 +257,12 @@ export function getContlifyConfigTemplate(
   dbType: SupportedDatabaseType,
   migrationMode: V2MigrationMode = "skip",
   postgresDeployment: PostgresDeployment = "cloudflare",
-  _supabaseMode?: SupabaseConnectionMode
+  _supabaseMode?: SupabaseConnectionMode,
+  framework?: ContlifyFramework
 ): string {
   const importBlock = getImportBlock(dbType, postgresDeployment);
   const clientBlock = getClientBlock(dbType, postgresDeployment);
-  const storageBlock = getStorageBlock(dbType, postgresDeployment);
+  const storageBlock = getStorageBlock(dbType, postgresDeployment, framework);
   const autoMigrateBlock = getAutoMigrateBlock(migrationMode, dbType);
   const envComment = getEnvComment(dbType, postgresDeployment);
 
@@ -260,7 +270,7 @@ export function getContlifyConfigTemplate(
 ${importBlock}
 ${clientBlock}
 export default defineConfig({
-  apiKey: process.env.CONTLIFY_API_KEY,
+  apiKey: process.env["CONTLIFY_API_KEY"],
 
 ${storageBlock}
 

@@ -31,11 +31,20 @@ export function detectBaseDir(projectRoot: string): string {
 }
 
 function resolveTargetPath(framework: ContlifyFramework, projectRoot: string, relativePath: string): string {
-  if (framework !== "nextjs" || relativePath === "contlify.config.ts") {
+  if (relativePath === "contlify.config.ts") {
     return relativePath;
   }
   const baseDir = detectBaseDir(projectRoot);
-  return baseDir ? `${baseDir}/${relativePath}` : relativePath;
+  if (!baseDir) {
+    return relativePath;
+  }
+  if (framework === "nextjs") {
+    return `${baseDir}/${relativePath}`;
+  }
+  if (framework === "angular" && fs.existsSync(path.join(projectRoot, "src", "server.ts"))) {
+    return `src/${relativePath}`;
+  }
+  return relativePath;
 }
 
 function writeEntries(

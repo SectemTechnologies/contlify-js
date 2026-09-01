@@ -134,9 +134,30 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
 
     async createPost(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse> {
       const client = await getClient(true);
-      const id = (payload.externalId as string | undefined) ?? `post_${Date.now()}`;
       const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
+
+      // Check if post already exists to reuse its existing ID (prevents foreign key constraint violations on contlify_post_categories)
+      let actualPostId = payload.externalId as string | undefined;
+      if (!actualPostId) {
+        try {
+          const checkQuery = client.from("contlify_posts");
+          if (typeof checkQuery?.select === "function") {
+            const existingPost = await queryAll<{ id: string }>(
+              checkQuery.select("id").eq("slug", slug).limit(1),
+              "createPost (check existing post slug)"
+            );
+            if (existingPost[0]?.id) {
+              actualPostId = existingPost[0].id;
+            }
+          }
+        } catch {
+          // If check fails (e.g. table not found or mock client), fallback to generated ID
+        }
+        if (!actualPostId) {
+          actualPostId = `post_${Date.now()}`;
+        }
+      }
 
       const coverImg = extractImageUrl(
         payload.coverImage ??
@@ -150,7 +171,7 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
       );
 
       const upsertQuery = client.from("contlify_posts").upsert({
-        id, title: payload.title, slug,
+        id: actualPostId, title: payload.title, slug,
         subtitle: payload.subtitle ?? null,
         content: payload.content,
         content_type: payload.contentType ?? "markdown",
@@ -163,22 +184,36 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
         created_at: now, updated_at: now,
       }, { onConflict: "slug" });
 
-      const postRes = await executeSupabase<{ id?: string } | Array<{ id?: string }>>(
+      await executeSupabase(
         typeof upsertQuery?.select === "function" ? upsertQuery.select("id").single() : upsertQuery,
         "createPost (contlify_posts)"
       );
-
-      const resData = postRes.data;
-      const actualPostId = (resData && !Array.isArray(resData) && typeof resData === "object" ? resData.id : undefined)
-        ?? (Array.isArray(resData) && resData[0] ? resData[0].id : undefined)
-        ?? id;
 
       // Handle author (supports string name or author object)
       if (payload.author) {
         const authorObj = typeof payload.author === "string" ? { name: payload.author } : (payload.author as Record<string, unknown>);
         const authorName = (authorObj.name as string | undefined) || "Unknown Author";
         const authorSlug = slugify((authorObj.slug as string | undefined) ?? authorName);
-        const authorId = (authorObj.externalId as string | undefined) ?? `author_${authorSlug}`;
+        
+        let authorId = (authorObj.externalId as string | undefined);
+        if (!authorId) {
+          try {
+            const authorQuery = client.from("contlify_authors");
+            if (typeof authorQuery?.select === "function") {
+              const existingAuthor = await queryAll<{ id: string }>(
+                authorQuery.select("id").eq("slug", authorSlug).limit(1),
+                "createPost (check existing author slug)"
+              );
+              if (existingAuthor[0]?.id) {
+                authorId = existingAuthor[0].id;
+              }
+            }
+          } catch {}
+          if (!authorId) {
+            authorId = `author_${authorSlug}`;
+          }
+        }
+
         const avatarStr = typeof authorObj.avatar === "object" && authorObj.avatar !== null
           ? (authorObj.avatar as { url?: string }).url ?? null
           : (authorObj.avatar as string | undefined) ?? null;
@@ -206,7 +241,26 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
           const cat = typeof rawCat === "string" ? { name: rawCat } : (rawCat as Record<string, unknown>);
           const catName = (cat.name as string | undefined) || "Uncategorized";
           const catSlug = slugify((cat.slug as string | undefined) ?? catName);
-          const catId = (cat.externalId as string | undefined) ?? `cat_${catSlug}`;
+          
+          let catId = (cat.externalId as string | undefined);
+          if (!catId) {
+            try {
+              const catQuery = client.from("contlify_categories");
+              if (typeof catQuery?.select === "function") {
+                const existingCat = await queryAll<{ id: string }>(
+                  catQuery.select("id").eq("slug", catSlug).limit(1),
+                  "createPost (check existing category slug)"
+                );
+                if (existingCat[0]?.id) {
+                  catId = existingCat[0].id;
+                }
+              }
+            } catch {}
+            if (!catId) {
+              catId = `cat_${catSlug}`;
+            }
+          }
+
           const catCoverImg = extractImageUrl(cat.coverImage ?? cat.cover_image ?? cat.image ?? cat.imageUrl);
 
           await executeSupabase(
@@ -233,7 +287,25 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
           const tag = typeof rawTag === "string" ? { name: rawTag } : (rawTag as Record<string, unknown>);
           const tagName = (tag.name as string | undefined) || "General";
           const tagSlug = slugify((tag.slug as string | undefined) ?? tagName);
-          const tagId = (tag.externalId as string | undefined) ?? `tag_${tagSlug}`;
+          
+          let tagId = (tag.externalId as string | undefined);
+          if (!tagId) {
+            try {
+              const tagQuery = client.from("contlify_tags");
+              if (typeof tagQuery?.select === "function") {
+                const existingTag = await queryAll<{ id: string }>(
+                  tagQuery.select("id").eq("slug", tagSlug).limit(1),
+                  "createPost (check existing tag slug)"
+                );
+                if (existingTag[0]?.id) {
+                  tagId = existingTag[0].id;
+                }
+              }
+            } catch {}
+            if (!tagId) {
+              tagId = `tag_${tagSlug}`;
+            }
+          }
 
           await executeSupabase(
             client.from("contlify_tags").upsert(
