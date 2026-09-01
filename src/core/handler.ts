@@ -2,7 +2,7 @@ import type { ContlifyConfig } from "../config/contlify-config.js";
 import { resolveConfig } from "../config/default-config.js";
 import { Router } from "../routing/router.js";
 import { RequestContext } from "./request-context.js";
-import { handleCreatePost } from "./posts-handler.js";
+import { handleCreatePost, handleGetPostById } from "./posts-handler.js";
 import { handleUpdatePost } from "./update-post-handler.js";
 import { handleValidate } from "./validate-handler.js";
 import { handleGetAuthors } from "./authors-handler.js";
@@ -62,7 +62,15 @@ export function createContlifyHandler(userConfig?: ContlifyConfig): ContlifyHand
     "Publish a new blog post"
   );
 
-  // 3. Update Post: PATCH /posts/:id and PUT /posts/:id
+  // 3. Get Single Post: GET /posts/:id
+  router.register(
+    "GET",
+    "/posts/:id",
+    protectedRoute(handleGetPostById),
+    "Fetch a single post by ID or slug"
+  );
+
+  // 4. Update Post: PATCH /posts/:id and PUT /posts/:id
   router.register(
     "PATCH",
     "/posts/:id",

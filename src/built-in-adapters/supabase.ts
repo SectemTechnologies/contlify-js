@@ -2,6 +2,7 @@ import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author
 import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
 import { AdapterError } from "../errors/adapter-error.js";
+import { NotFoundError } from "../errors/not-found-error.js";
 
 /**
  * Minimal Supabase client interface.
@@ -117,6 +118,59 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
       if (err instanceof AdapterError) throw err;
       const msg = err?.message || String(err);
       throw new AdapterError(`Supabase error during ${operationName}: ${msg}`, undefined, err instanceof Error ? err : undefined);
+    }
+  }
+
+  async function resolveFullPost(client: any, row: RawPostRow): Promise<Post> {
+    const basePost = mapRowToPost(row);
+    try {
+      const [catJoinRows, tagJoinRows, authorRow] = await Promise.all([
+        queryAll<{ category_id: string }>(
+          client.from("contlify_post_categories").select("category_id").eq("post_id", row.id),
+          "resolveFullPost (cat join)"
+        ).catch(() => []),
+        queryAll<{ tag_id: string }>(
+          client.from("contlify_post_tags").select("tag_id").eq("post_id", row.id),
+          "resolveFullPost (tag join)"
+        ).catch(() => []),
+        row.author_id
+          ? client.from("contlify_authors").select("*").eq("id", row.author_id).single().then((r: any) => r?.data).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      let categories: Category[] = [];
+      if (catJoinRows.length > 0) {
+        const catIds = catJoinRows.map((r) => r.category_id);
+        const catRows = await queryAll<RawCategoryRow>(
+          client.from("contlify_categories").select("*").in("id", catIds),
+          "resolveFullPost (categories)"
+        ).catch(() => []);
+        categories = catRows.map(mapRowToCategory);
+      }
+
+      let tags: Tag[] = [];
+      if (tagJoinRows.length > 0) {
+        const tagIds = tagJoinRows.map((r) => r.tag_id);
+        const tagRows = await queryAll<RawTagRow>(
+          client.from("contlify_tags").select("*").in("id", tagIds),
+          "resolveFullPost (tags)"
+        ).catch(() => []);
+        tags = tagRows.map(mapRowToTag);
+      }
+
+      let author = basePost.author;
+      if (authorRow) {
+        author = mapRowToAuthor(authorRow);
+      }
+
+      return {
+        ...basePost,
+        categories,
+        tags,
+        author,
+      };
+    } catch {
+      return basePost;
     }
   }
 
@@ -336,6 +390,16 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
 
     async updatePost(idOrSlug: string, payload: Partial<PublishPostPayload> & Record<string, unknown>): Promise<PublishResponse> {
       const client = await getClient(true);
+      const existingRows = await queryAll<RawPostRow>(
+        client.from("contlify_posts").select("*").or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`).limit(1),
+        "updatePost (find existing)"
+      );
+      if (!existingRows[0]) {
+        throw new NotFoundError(`Post not found with ID or slug: ${idOrSlug}`);
+      }
+      const existingPost = existingRows[0];
+      const actualPostId = existingPost.id;
+
       const now = new Date().toISOString();
       const updates: Record<string, unknown> = { updated_at: now };
 
@@ -362,17 +426,131 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
         updates.slug = slugify((payload.custom_slug ?? payload.slug) as string);
       }
 
+      if (payload.author !== undefined) {
+        let authorId: string | null = null;
+        if (typeof payload.author === "string") {
+          const authorSlug = slugify(payload.author);
+          authorId = `author_${authorSlug}`;
+          await executeSupabase(
+            client.from("contlify_authors").upsert(
+              { id: authorId, name: payload.author, slug: authorSlug, created_at: now, updated_at: now },
+              { onConflict: "slug" }
+            ),
+            "updatePost (contlify_authors)"
+          );
+        } else if (payload.author && typeof payload.author === "object") {
+          const authorName = (payload.author as Record<string, unknown>).name as string | undefined || "Author";
+          const authorSlug = slugify(((payload.author as Record<string, unknown>).slug as string | undefined) ?? authorName);
+          authorId = ((payload.author as Record<string, unknown>).id as string | undefined) || `author_${authorSlug}`;
+          const authorAvatar = extractImageUrl((payload.author as any).avatar ?? (payload.author as any).image ?? (payload.author as any).avatarUrl);
+          await executeSupabase(
+            client.from("contlify_authors").upsert(
+              {
+                id: authorId,
+                name: authorName,
+                slug: authorSlug,
+                email: (payload.author as Record<string, unknown>).email,
+                bio: (payload.author as Record<string, unknown>).bio,
+                avatar: authorAvatar,
+                created_at: now,
+                updated_at: now,
+              },
+              { onConflict: "slug" }
+            ),
+            "updatePost (contlify_authors)"
+          );
+        }
+        updates.author_id = authorId;
+      }
+
       await executeSupabase(
-        client.from("contlify_posts").update(updates).or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`),
+        client.from("contlify_posts").update(updates).eq("id", actualPostId),
         "updatePost"
       );
 
-      const newSlug = (updates.slug as string | undefined) ?? idOrSlug;
+      if (payload.categories !== undefined) {
+        await executeSupabase(
+          client.from("contlify_post_categories").delete().eq("post_id", actualPostId),
+          "updatePost (delete post_categories)"
+        );
+        const rawCategories = Array.isArray(payload.categories) ? payload.categories : [];
+        for (const rawCat of rawCategories) {
+          const cat = typeof rawCat === "string" ? { name: rawCat } : (rawCat as Record<string, unknown>);
+          const catName = (cat.name as string | undefined) || "Uncategorized";
+          const catSlug = slugify((cat.slug as string | undefined) ?? catName);
+          let catId = (cat.externalId as string | undefined) || (cat.id as string | undefined);
+          if (!catId) {
+            try {
+              const existingCat = await queryAll<{ id: string }>(
+                client.from("contlify_categories").select("id").eq("slug", catSlug).limit(1),
+                "updatePost (check existing cat slug)"
+              );
+              if (existingCat[0]?.id) catId = existingCat[0].id;
+            } catch {}
+            if (!catId) catId = `cat_${catSlug}`;
+          }
+          const catImg = extractImageUrl((cat as any).coverImage ?? (cat as any).cover_image ?? (cat as any).image ?? (cat as any).imageUrl);
+          await executeSupabase(
+            client.from("contlify_categories").upsert(
+              { id: catId, name: catName, slug: catSlug, description: cat.description, cover_image: catImg, created_at: now, updated_at: now },
+              { onConflict: "slug" }
+            ),
+            "updatePost (contlify_categories)"
+          );
+          await executeSupabase(
+            client.from("contlify_post_categories").upsert(
+              { post_id: actualPostId, category_id: catId },
+              { onConflict: "post_id,category_id" }
+            ),
+            "updatePost (contlify_post_categories)"
+          );
+        }
+      }
+
+      if (payload.tags !== undefined) {
+        await executeSupabase(
+          client.from("contlify_post_tags").delete().eq("post_id", actualPostId),
+          "updatePost (delete post_tags)"
+        );
+        const rawTags = Array.isArray(payload.tags) ? payload.tags : [];
+        for (const rawTag of rawTags) {
+          const tag = typeof rawTag === "string" ? { name: rawTag } : (rawTag as Record<string, unknown>);
+          const tagName = (tag.name as string | undefined) || "General";
+          const tagSlug = slugify((tag.slug as string | undefined) ?? tagName);
+          let tagId = (tag.externalId as string | undefined) || (tag.id as string | undefined);
+          if (!tagId) {
+            try {
+              const existingTag = await queryAll<{ id: string }>(
+                client.from("contlify_tags").select("id").eq("slug", tagSlug).limit(1),
+                "updatePost (check existing tag slug)"
+              );
+              if (existingTag[0]?.id) tagId = existingTag[0].id;
+            } catch {}
+            if (!tagId) tagId = `tag_${tagSlug}`;
+          }
+          await executeSupabase(
+            client.from("contlify_tags").upsert(
+              { id: tagId, name: tagName, slug: tagSlug, created_at: now, updated_at: now },
+              { onConflict: "slug" }
+            ),
+            "updatePost (contlify_tags)"
+          );
+          await executeSupabase(
+            client.from("contlify_post_tags").upsert(
+              { post_id: actualPostId, tag_id: tagId },
+              { onConflict: "post_id,tag_id" }
+            ),
+            "updatePost (contlify_post_tags)"
+          );
+        }
+      }
+
+      const newSlug = (updates.slug as string | undefined) ?? existingPost.slug;
 
       return {
-        postId: idOrSlug,
+        postId: actualPostId,
         slug: newSlug,
-        status: (payload.status as PublishResponse["status"]) ?? "published",
+        status: (payload.status as PublishResponse["status"]) ?? (existingPost.status as PublishResponse["status"]) ?? "published",
         action: "updated",
         url: `/blog/post/${newSlug}`,
       };
@@ -382,7 +560,15 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
       const client = await getClient(false);
       if (!client || typeof client.from !== "function") return [];
       let q = client.from("contlify_posts").select("*");
-      if (options?.status) q = q.eq("status", options.status);
+      if (options?.status === "published") {
+        const nowIso = new Date().toISOString();
+        q = q.or(`status.eq.published,and(status.eq.scheduled,published_at.lte.${nowIso})`);
+      } else if (options?.status === "scheduled") {
+        const nowIso = new Date().toISOString();
+        q = q.eq("status", "scheduled").gt("published_at", nowIso);
+      } else if (options?.status) {
+        q = q.eq("status", options.status);
+      }
       const orderCol = options?.orderBy === "createdAt" ? "created_at" : options?.orderBy === "updatedAt" ? "updated_at" : "published_at";
       q = q.order(orderCol, { ascending: options?.order === "asc" });
       if (options?.limit && options?.offset !== undefined) {
@@ -391,16 +577,20 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
         q = q.limit(options.limit);
       }
       const rows = await queryAll<RawPostRow>(q, "getAllPosts");
-      return rows.map((row) => mapRowToPost(row));
+      return Promise.all(rows.map((row) => resolveFullPost(client, row)));
     },
 
     async getPostBySlug(slug: string): Promise<Post | null> {
       try {
         const client = await getClient(false);
         if (!client || typeof client.from !== "function") return null;
-        const result = await Promise.resolve(client.from("contlify_posts").select("*").eq("slug", slug).single());
-        if (!result || !result.data) return null;
-        return mapRowToPost(result.data as unknown as RawPostRow);
+        const nowIso = new Date().toISOString();
+        const rows = await queryAll<RawPostRow>(
+          client.from("contlify_posts").select("*").eq("slug", slug).or(`status.eq.published,and(status.eq.scheduled,published_at.lte.${nowIso})`).limit(1),
+          "getPostBySlug"
+        );
+        if (!rows[0]) return null;
+        return resolveFullPost(client, rows[0]);
       } catch {
         return null;
       }
@@ -410,9 +600,13 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
       try {
         const client = await getClient(false);
         if (!client || typeof client.from !== "function") return null;
-        const result = await Promise.resolve(client.from("contlify_posts").select("*").eq("id", id).single());
-        if (!result || !result.data) return null;
-        return mapRowToPost(result.data as unknown as RawPostRow);
+        const nowIso = new Date().toISOString();
+        const rows = await queryAll<RawPostRow>(
+          client.from("contlify_posts").select("*").eq("id", id).or(`status.eq.published,and(status.eq.scheduled,published_at.lte.${nowIso})`).limit(1),
+          "getPostById"
+        );
+        if (!rows[0]) return null;
+        return resolveFullPost(client, rows[0]);
       } catch {
         return null;
       }
@@ -431,11 +625,12 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
         );
         const postIds = joinRows.map((r) => r.post_id);
         if (!postIds.length) return [];
+        const nowIso = new Date().toISOString();
         const rows = await queryAll<RawPostRow>(
-          client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false }),
+          client.from("contlify_posts").select("*").in("id", postIds).or(`status.eq.published,and(status.eq.scheduled,published_at.lte.${nowIso})`).order("published_at", { ascending: false }),
           "getPostsByCategory (posts)"
         );
-        return rows.map((row) => mapRowToPost(row));
+        return Promise.all(rows.map((row) => resolveFullPost(client, row)));
       } catch {
         return [];
       }
@@ -454,11 +649,12 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
         );
         const postIds = joinRows.map((r) => r.post_id);
         if (!postIds.length) return [];
+        const nowIso = new Date().toISOString();
         const rows = await queryAll<RawPostRow>(
-          client.from("contlify_posts").select("*").in("id", postIds).eq("status", "published").order("published_at", { ascending: false }),
+          client.from("contlify_posts").select("*").in("id", postIds).or(`status.eq.published,and(status.eq.scheduled,published_at.lte.${nowIso})`).order("published_at", { ascending: false }),
           "getPostsByTag (posts)"
         );
-        return rows.map((row) => mapRowToPost(row));
+        return Promise.all(rows.map((row) => resolveFullPost(client, row)));
       } catch {
         return [];
       }
@@ -491,20 +687,21 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
 
       return Promise.all(
         baseCategories.map(async (cat) => {
-          if (cat.coverImage) return cat;
           try {
             const joinRows = await queryAll<{ post_id: string }>(
               client.from("contlify_post_categories").select("post_id").eq("category_id", cat.id),
-              "getCategories (cover image join)"
+              "getCategories (join)"
             );
+            const postCount = joinRows.length;
+            if (cat.coverImage) return { ...cat, postCount };
             const postIds = joinRows.map((r) => r.post_id);
-            if (!postIds.length) return cat;
+            if (!postIds.length) return { ...cat, postCount };
             const postRows = await queryAll<{ cover_image?: string }>(
               client.from("contlify_posts").select("cover_image").in("id", postIds).order("published_at", { ascending: false }),
               "getCategories (cover image post)"
             );
             const validRow = postRows.find((r) => r.cover_image && r.cover_image.trim() !== "");
-            return { ...cat, coverImage: validRow?.cover_image };
+            return { ...cat, postCount, coverImage: validRow?.cover_image };
           } catch {
             return cat;
           }
@@ -548,7 +745,21 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
       const client = await getClient(false);
       if (!client || typeof client.from !== "function") return [];
       const rows = await queryAll<RawTagRow>(client.from("contlify_tags").select("*").order("name", { ascending: true }), "getTags");
-      return rows.map(mapRowToTag);
+      const baseTags = rows.map(mapRowToTag);
+
+      return Promise.all(
+        baseTags.map(async (tag) => {
+          try {
+            const joinRows = await queryAll<{ post_id: string }>(
+              client.from("contlify_post_tags").select("post_id").eq("tag_id", tag.id),
+              "getTags (join)"
+            );
+            return { ...tag, postCount: joinRows.length };
+          } catch {
+            return tag;
+          }
+        })
+      );
     },
   };
 }

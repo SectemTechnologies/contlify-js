@@ -1,22 +1,24 @@
-# contlify
+# 🚀 contlify
 
-> Standardized Blog Publishing Engine & Database Adapter API Framework for Next.js, Astro, and React Router.
+> **Standardized Blog Publishing Engine & Database Adapter Framework for Next.js, Astro, React Router, and Angular.**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](./LICENSE)
+[![Tests: 147 passed](https://img.shields.io/badge/Tests-147%20Passed-brightgreen.svg?style=flat-square)](./tests)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-black.svg?style=flat-square)](https://nodejs.org)
 
-`contlify` is a library-first publishing engine and database adapter framework. It enables publishing services (Postman, n8n, CMS dashboards, or custom backends) to publish, update, and manage blog posts on your website through standardized Web APIs, while providing zero-boilerplate read functions to query your content directly from server components and pages.
+`contlify` is a library-first publishing engine and multi-database adapter framework. It enables publishing platforms (Contlify, Postman, n8n, Make, custom backends) to publish, update, and manage blog posts on your website through standardized Web APIs, while providing zero-boilerplate query functions to render content directly in your frontend server components and pages.
 
 ---
 
-## 🌟 Key Highlights
+## 🌟 Why Contlify?
 
-- **Library-First Architecture**: Clean codebase with zero scaffolded boilerplate. All database adapters, liveness checks, and query utilities live inside the package.
-- **Declarative `defineConfig()`**: Single configuration file (`contlify.config.ts`) with typed storage options for **PostgreSQL**, **Supabase**, **Cloudflare D1**, and **MongoDB**.
-- **Interactive CLI Wizard (`npx contlify init`)**: Generates only `contlify.config.ts` and a thin gateway route for **Next.js (App Router)**, **Astro**, or **React Router v7**.
-- **Package-Level Read Queries**: Query posts and taxonomies directly via `getAllPosts()`, `getPostBySlug()`, `getCategories()`, etc., with automatic configuration resolution.
-- **Edge & Serverless Hardened**: 100% compatible with Cloudflare Workers (`workerd`), OpenNext, Vercel, Railway, AWS, Docker, and Node.js.
-- **Built-in Resilience**: Ping-based socket reconnects, bounded timeout races (prevents Cloudflare Error 1101), and Next.js build-phase guards.
+- ⚡ **Library-First Architecture**: Minimal 2-file footprint (`contlify.config.ts` + thin API gateway). Zero messy scaffolded boilerplate cluttering your repo.
+- 🗄️ **Multi-Database Support**: First-class adapters for **PostgreSQL** (pg / Neon), **Supabase**, **Cloudflare D1** (SQLite), and **MongoDB**.
+- 🌐 **Universal Framework Compatibility**: Works seamlessly out of the box with **Next.js (App & Pages Router)**, **Astro**, **React Router v7**, and **Angular (SSR)**.
+- 🔍 **Zero-Boilerplate Query API**: Simple, strongly-typed functions like `getAllPosts()`, `getPostBySlug()`, `getCategories()`, and `getTags()` that auto-resolve your database configuration.
+- 🛡️ **Edge & Serverless Hardened**: Tested and optimized for Cloudflare Workers (`workerd`), OpenNext, Vercel, Netlify, Railway, Render, Docker, and Node.js.
+- 🖼️ **Responsive Image Optimization**: Automatically enhances HTML content images with responsive inline styles, `loading="lazy"`, and `decoding="async"`.
 
 ---
 
@@ -32,32 +34,34 @@ yarn add contlify
 
 ---
 
-## 🚀 Quick Start (Interactive Setup)
+## 🚀 Quick Start (Interactive CLI)
 
-Run the interactive setup wizard inside your project:
+Initialize Contlify inside your existing web project in seconds:
 
 ```bash
 npx contlify init
 ```
 
-The wizard detects your framework, prompts for your database and hosting environment, and generates exactly **2 integration files**:
+The setup wizard auto-detects your web framework, prompts for your database and hosting target, and generates exactly **2 integration files**:
 
 1. **`contlify.config.ts`** (Project root) — Declarative configuration
-2. **Framework Gateway Route** (e.g. `app/api/contlify/v1/[...path]/route.ts`) — Thin bridge to Contlify's engine
+2. **Framework Gateway Route** — Thin bridge to Contlify's API engine
+
+### Gateway Locations by Framework
 
 | Framework | Gateway File Path |
 | :--- | :--- |
 | **Next.js** | `app/api/contlify/v1/[...path]/route.ts` (or `src/app/...`) |
 | **Astro** | `src/pages/api/contlify/v1/[...path].ts` |
 | **React Router v7** | `app/routes/api.contlify.$.ts` |
+| **Angular (SSR)** | `server.contlify.ts` |
 
 Use `--overwrite` to replace existing configuration files:
-
 ```bash
 npx contlify init --overwrite
 ```
 
-### Database Migration Command
+### 🗄️ Database Migration Command
 
 Generate migration SQL, inspect schemas, or configure auto-migration:
 
@@ -65,12 +69,12 @@ Generate migration SQL, inspect schemas, or configure auto-migration:
 npx contlify migrate
 ```
 
-- Automatically detects your database driver from `contlify.config.ts`.
-- Generates a `schema.sql` file, prints SQL commands to console, or validates migration status.
+- Automatically reads your database driver from `contlify.config.ts`.
+- Generates `schema.sql` or automatically provisions tables on startup (`autoMigrate: true`).
 
 ---
 
-## ⚙️ Configuration Reference (`contlify.config.ts`)
+## ⚙️ Declarative Configuration (`contlify.config.ts`)
 
 Configure Contlify in a single TypeScript file in your project root using `defineConfig`:
 
@@ -79,101 +83,46 @@ Configure Contlify in a single TypeScript file in your project root using `defin
 import { defineConfig } from "contlify";
 
 export default defineConfig({
+  // Your secret API key (keep secret in .env.local!)
   apiKey: process.env.CONTLIFY_API_KEY,
 
+  // Storage Driver Configuration
   storage: {
-    driver: "mongodb", // "postgres" | "supabase" | "d1" | "mongodb" | "custom"
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
-    deployment: "cloudflare", // "cloudflare" | "node"
+    driver: "postgres", // "postgres" | "supabase" | "d1" | "mongodb" | "custom"
+    connectionString: process.env.DATABASE_URL,
   },
 
+  // API endpoint prefix (defaults to /api/contlify/v1)
   api: {
     path: "/api/contlify/v1",
   },
 
+  // Optional: Dynamic blog post URL pattern
   postUrl: "/blog/{slug}",
 });
 ```
 
 ---
 
-## 🗄️ Storage Drivers & Edge Deployments
+## 🗄️ Storage Drivers
 
-### 1. MongoDB
-
-Contlify manages connection pooling, reconnect-on-stale-topology, dynamic driver imports, and fail-fast timeouts internally.
-
-#### A. Cloudflare Workers / OpenNext (Edge-Optimized)
-```typescript
-import { defineConfig } from "contlify";
-
-export default defineConfig({
-  apiKey: process.env.CONTLIFY_API_KEY,
-  storage: {
-    driver: "mongodb",
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
-    deployment: "cloudflare", // Enables edge socket options & 4s timeout protection
-  },
-  api: { path: "/api/contlify/v1" },
-  postUrl: "/blog/{slug}",
-});
-```
-
-> [!IMPORTANT]
-> **Cloudflare Workers Standard Connection String Requirement**:
-> Cloudflare Workers (`workerd`) cannot resolve DNS `SRV` records used by `mongodb+srv://` schemes. Always use the **Standard Connection String** from MongoDB Atlas:
-> 1. In MongoDB Atlas, go to **Connect** → **Drivers**.
-> 2. Toggle **Standard connection string**.
-> 3. Set the secret: `npx wrangler secret put MONGODB_URI`
-> 
-> ```env
-> MONGODB_URI=mongodb://user:password@host1:27017,host2:27017,host3:27017/?replicaSet=atlas-xxx&ssl=true&authSource=admin
-> ```
-
-#### B. Node.js / Vercel / Railway / Docker
-```typescript
-import { defineConfig } from "contlify";
-
-export default defineConfig({
-  apiKey: process.env.CONTLIFY_API_KEY,
-  storage: {
-    driver: "mongodb",
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
-    deployment: "node", // Standard persistent connection pool
-  },
-  api: { path: "/api/contlify/v1" },
-  postUrl: "/blog/{slug}",
-});
-```
-
----
-
-### 2. PostgreSQL
+<details>
+<summary><b>1. PostgreSQL & Neon (Click to expand)</b></summary>
 
 #### A. Cloudflare Workers / OpenNext (Neon Serverless HTTP)
-Uses Neon's stateless HTTP driver (`@neondatabase/serverless`). Every query executes over stateless HTTP fetch with zero TCP socket leaks:
 ```typescript
 import { neon } from "@neondatabase/serverless";
 import { defineConfig } from "contlify";
 
-const _sql = neon(process.env.DATABASE_URL!);
-const neonHttpClient = {
-  async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-    const rows = await _sql.query(sql, params ?? []);
-    return { rows: rows as unknown as T[] };
-  },
-};
-
+const sql = neon(process.env.DATABASE_URL!);
 export default defineConfig({
   apiKey: process.env.CONTLIFY_API_KEY,
   storage: {
     driver: "postgres",
-    client: neonHttpClient,
+    client: {
+      query: async (queryStr, params) => ({ rows: await sql.query(queryStr, params ?? []) }),
+    },
   },
-  api: { path: "/api/contlify/v1" },
   postUrl: "/blog/{slug}",
 });
 ```
@@ -184,36 +133,32 @@ import { Pool } from "pg";
 import { defineConfig } from "contlify";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
 export default defineConfig({
   apiKey: process.env.CONTLIFY_API_KEY,
   storage: {
     driver: "postgres",
     client: pool,
   },
-  autoMigrate: true, // Auto-creates tables on first run
-  api: { path: "/api/contlify/v1" },
+  autoMigrate: true,
   postUrl: "/blog/{slug}",
 });
 ```
+</details>
 
----
-
-### 3. Supabase (JavaScript SDK)
+<details>
+<summary><b>2. Supabase (Click to expand)</b></summary>
 
 ```typescript
 import { createClient } from "@supabase/supabase-js";
 import { defineConfig } from "contlify";
 
-let _supabaseClient: ReturnType<typeof createClient> | null = null;
+let _client: ReturnType<typeof createClient> | null = null;
 function getSupabaseClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) return null;
-  if (!_supabaseClient) {
-    _supabaseClient = createClient(url, key);
-  }
-  return _supabaseClient;
+  if (!_client) _client = createClient(url, key);
+  return _client;
 }
 
 export default defineConfig({
@@ -222,17 +167,15 @@ export default defineConfig({
     driver: "supabase",
     client: getSupabaseClient,
   },
-  api: { path: "/api/contlify/v1" },
   postUrl: "/blog/{slug}",
 });
 ```
-
 > [!NOTE]
-> **Supabase Schema Setup**: Apply `schema.sql` via **Supabase Dashboard → SQL Editor → New Query** once before publishing.
+> Apply `schema.sql` once in **Supabase Dashboard → SQL Editor → New Query** before publishing.
+</details>
 
----
-
-### 4. Cloudflare D1 (Native Serverless SQLite)
+<details>
+<summary><b>3. Cloudflare D1 (Native Serverless SQLite) (Click to expand)</b></summary>
 
 ```typescript
 import { defineConfig } from "contlify";
@@ -251,177 +194,157 @@ export default defineConfig({
       }
     },
   },
-  api: { path: "/api/contlify/v1" },
+  postUrl: "/blog/{slug}",
+});
+```
+</details>
+
+<details>
+<summary><b>4. MongoDB (Click to expand)</b></summary>
+
+#### A. Cloudflare Workers / Edge
+```typescript
+import { defineConfig } from "contlify";
+
+export default defineConfig({
+  apiKey: process.env.CONTLIFY_API_KEY,
+  storage: {
+    driver: "mongodb",
+    uri: process.env.MONGODB_URI, // Standard (non-SRV) URI required for Cloudflare Workers
+    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
+    deployment: "cloudflare",
+  },
   postUrl: "/blog/{slug}",
 });
 ```
 
----
-
-## 🌐 Gateway Route Handler
-
-### Next.js App Router (`app/api/contlify/v1/[...path]/route.ts`)
-
+#### B. Node.js / Vercel / Railway / Docker
 ```typescript
-import "../../../../../../contlify.config";
-import { createNextHandler } from "contlify/next";
+import { defineConfig } from "contlify";
 
-export const dynamic = "force-dynamic";
-
-const handler = createNextHandler();
-
-export {
-  handler as GET,
-  handler as POST,
-  handler as PATCH,
-  handler as PUT,
-  handler as DELETE,
-  handler as OPTIONS,
-  handler as HEAD,
-};
+export default defineConfig({
+  apiKey: process.env.CONTLIFY_API_KEY,
+  storage: {
+    driver: "mongodb",
+    uri: process.env.MONGODB_URI,
+    dbName: process.env.MONGODB_DB_NAME ?? "contlify",
+    deployment: "node",
+  },
+  postUrl: "/blog/{slug}",
+});
 ```
+</details>
 
 ---
 
-## 📖 Querying Posts in Your Pages
+## 📖 Querying Content in Your Pages
 
-Import query functions directly from `contlify`. No local query files or adapter passing required:
-
-```typescript
-// app/blog/page.tsx (Next.js Server Component)
-import { getAllPosts, getCategories } from "contlify";
-
-export default async function BlogIndexPage() {
-  const [posts, categories] = await Promise.all([
-    getAllPosts({ status: "published", limit: 10 }),
-    getCategories(),
-  ]);
-
-  return (
-    <main>
-      <h1>Blog</h1>
-      {posts.map((post) => (
-        <article key={post.id}>
-          <h2>{post.title}</h2>
-          <p>{post.excerpt}</p>
-        </article>
-      ))}
-    </main>
-  );
-}
-```
-
-### Available Read Functions
+Contlify exports clean query functions that automatically connect to your configured database:
 
 ```typescript
 import {
   getAllPosts,
   getPostBySlug,
-  getPostById,
-  getPostsByCategory,
-  getPostsByTag,
-  getPostCount,
   getCategories,
+  getPostsByCategory,
   getTags,
-  getAuthors,
+  getPostsByTag,
 } from "contlify";
-
-// Single post lookup
-const post = await getPostBySlug("getting-started");
-
-// Category filtering
-const techPosts = await getPostsByCategory("technology");
-
-// Tag filtering
-const reactPosts = await getPostsByTag("react");
-
-// Paginated query
-const result = await getAllPosts({
-  status: "published",
-  orderBy: "publishedAt",
-  order: "desc",
-  limit: 20,
-  offset: 0,
-});
 ```
 
----
+### Next.js App Router Example (`app/blog/page.tsx`)
+```tsx
+import Link from "next/link";
+import { getAllPosts, getCategories } from "contlify";
 
-## 📮 API Publishing Payload Examples
+export const revalidate = 60; // ISR cache revalidation
 
-### Simple Payload
-```http
-POST /api/contlify/v1/posts
-x-api-key: your_secret_api_key
-Content-Type: application/json
+export default async function BlogPage() {
+  const [posts, categories] = await Promise.all([
+    getAllPosts(),
+    getCategories(),
+  ]);
 
-{
-  "title": "Getting Started with Contlify",
-  "content": "<h1>Hello World</h1><p>This is my first published article.</p>",
-  "status": "published",
-  "custom_slug": "getting-started-with-contlify",
-  "author": "Alex Smith",
-  "categories": ["Technology", "Web Development"],
-  "tags": ["Next.js", "TypeScript"],
-  "coverImage": "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8"
-}
-```
+  return (
+    <main className="max-w-4xl mx-auto py-12 px-4">
+      <h1 className="text-4xl font-bold mb-8">Latest Articles</h1>
 
-### Advanced Payload (Objects & Metadata)
-```json
-{
-  "title": "Mastering Next.js App Router",
-  "content": "<h2>Deep Dive</h2><p>Server Actions and Edge Rendering.</p>",
-  "status": "published",
-  "author": {
-    "name": "Sarah Chen",
-    "email": "sarah@example.com",
-    "bio": "Lead Full-Stack Architect"
-  },
-  "categories": [
-    {
-      "name": "Technology",
-      "slug": "technology",
-      "description": "Tech news, frameworks, and engineering tutorials."
-    }
-  ],
-  "tags": [
-    { "name": "React", "slug": "react" }
-  ],
-  "seo": {
-    "title": "Next.js App Router Masterclass",
-    "description": "Complete guide to Next.js App Router architecture."
-  }
+      {/* Categories */}
+      <div className="flex gap-2 mb-8">
+        {categories.map((cat) => (
+          <span key={cat.id} className="bg-gray-100 px-3 py-1 rounded-full text-sm">
+            {cat.name} ({cat.postCount ?? 0})
+          </span>
+        ))}
+      </div>
+
+      {/* Post Grid */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {posts.map((post) => (
+          <article key={post.id} className="border rounded-xl p-6 hover:shadow-md transition">
+            <h2 className="text-xl font-bold mb-2">
+              <Link href={`/blog/${post.slug}`} className="hover:underline">
+                {post.title}
+              </Link>
+            </h2>
+            <p className="text-gray-600 text-sm mb-4">{post.excerpt}</p>
+            <span className="text-xs text-gray-400">{new Date(post.publishedAt || post.createdAt).toLocaleDateString()}</span>
+          </article>
+        ))}
+      </div>
+    </main>
+  );
 }
 ```
 
 ---
 
-## 🛠️ Endpoints Reference
+## 📡 Publishing REST API
 
-All endpoints are versioned under `/api/contlify/v1`:
+Publish posts automatically from Contlify, Postman, cURL, or automation pipelines (n8n, Zapier):
 
-| Method | Endpoint Path | Auth Required | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/contlify/v1/validate` | Yes | Health check, API key verification, & adapter capabilities |
-| `GET` | `/api/contlify/v1/health` | Yes | Service health check |
-| `POST` | `/api/contlify/v1/posts` | Yes | Create and publish a new blog post |
-| `PATCH` | `/api/contlify/v1/posts/:id` | Yes | Partial update of an existing post by ID or slug |
-| `PUT` | `/api/contlify/v1/posts/:id` | Yes | Full update or replacement of a post by ID or slug |
-| `GET` | `/api/contlify/v1/authors` | Yes | Retrieve list of authors |
-| `GET` | `/api/contlify/v1/categories` | Yes | Retrieve list of categories (with cover images) |
-| `GET` | `/api/contlify/v1/tags` | Yes | Retrieve list of tags |
+### Create Blog Post
+```bash
+curl -X POST "https://yourdomain.com/api/contlify/v1/posts" \
+  -H "X-Contlify-Key: your_secret_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My First Post via Contlify",
+    "content": "<h2>Hello World</h2><p>Article body content.</p>",
+    "status": "published",
+    "custom_slug": "my-first-post",
+    "author": "Jane Doe",
+    "categories": ["Engineering"],
+    "tags": ["Next.js", "TypeScript"]
+  }'
+```
+
+### Update Blog Post
+```bash
+curl -X PATCH "https://yourdomain.com/api/contlify/v1/posts/my-first-post" \
+  -H "X-Contlify-Key: your_secret_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My First Post (Updated Title)"
+  }'
+```
 
 ---
 
-## 📖 Documentation & Troubleshooting
+## 📚 Documentation & Guides
 
-- 📖 [API Reference Guide](./docs/api-reference.md)
-- 🔌 [Integration Guides (Postman, cURL, n8n, Custom Backend)](./docs/integration-guides.md)
-- ⚠️ [Error Catalog & Edge Troubleshooting Guide](./docs/errors.md)
+- [📖 Complete Integration & Blog Setup Guide](./docs/integration-guides.md) — Step-by-step blog setup for Next.js, Astro, React Router v7, and Angular SSR.
+- [🛠️ Error Architecture & Troubleshooting Guide](./docs/errors.md) — Error codes, root causes, and database-specific resolution recipes.
+- [📚 REST API Reference](./docs/api-reference.md) — Complete endpoint schemas, parameters, and payloads.
 
 ---
 
-## 📜 License
+## 🤝 Contributing
 
-[MIT](./LICENSE)
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/SectemTechnologies/Next.js-Package/issues).
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See [LICENSE](./LICENSE) for more information.

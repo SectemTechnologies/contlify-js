@@ -1,5 +1,6 @@
 import type { RouteContext } from "../routing/route-context.js";
 import { PublishPayloadValidator } from "../validation/publish-payload-validator.js";
+import { RouteParamValidator } from "../validation/route-param-validator.js";
 import { ResponseBuilder } from "../responses/response-builder.js";
 import { slugify } from "../utils/slugify.js";
 import { optimizeContentImages } from "../utils/image-transformer.js";
@@ -45,7 +46,16 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
   let postUrl = "";
   const postForUrl = { ...payload, content: optimizedContent, slug };
 
-  if (ctx.config.getPostUrl) {
+  if (typeof ctx.config.postUrl === "function") {
+    try {
+      postUrl = ctx.config.postUrl(postForUrl);
+    } catch (err) {
+      ctx.config.logger.warn("Custom postUrl callback threw an error:", err);
+      postUrl = `/blog/post/${slug}`;
+    }
+  } else if (typeof ctx.config.postUrl === "string" && ctx.config.postUrl.trim() !== "") {
+    postUrl = ctx.config.postUrl.replace(/{slug}/g, slug);
+  } else if (ctx.config.getPostUrl) {
     try {
       postUrl = ctx.config.getPostUrl(postForUrl);
     } catch (err) {
@@ -139,4 +149,41 @@ export async function handleCreatePost(ctx: RouteContext): Promise<Response> {
   };
 
   return ResponseBuilder.toJsonResponse(responseBody, HttpStatus.OK);
+}
+
+/**
+ * Route handler for GET /posts/:id endpoint.
+ * Fetches a single post by its unique ID or slug.
+ */
+export async function handleGetPostById(ctx: RouteContext): Promise<Response> {
+  const paramResult = RouteParamValidator.validateParam(ctx.params, "id");
+  if (!paramResult.success || !paramResult.data) {
+    return ResponseBuilder.toJsonResponse(
+      ResponseBuilder.error("Invalid route parameter", ErrorCode.BAD_REQUEST, paramResult.errors),
+      HttpStatus.BAD_REQUEST
+    );
+  }
+
+  const idOrSlug = paramResult.data;
+  const adapter = ctx.adapter;
+  if (!adapter) {
+    throw new AdapterError("Storage adapter is not configured in Contlify handler options");
+  }
+
+  let post: unknown = null;
+  if (typeof adapter.getPostById === "function") {
+    post = await adapter.getPostById(idOrSlug);
+  }
+  if (!post && typeof adapter.getPostBySlug === "function") {
+    post = await adapter.getPostBySlug(idOrSlug);
+  }
+
+  if (!post) {
+    return ResponseBuilder.toJsonResponse(
+      ResponseBuilder.error(`Post not found with ID or slug: ${idOrSlug}`, ErrorCode.NOT_FOUND),
+      HttpStatus.NOT_FOUND
+    );
+  }
+
+  return ResponseBuilder.toJsonResponse({ status: "success", data: post }, HttpStatus.OK);
 }

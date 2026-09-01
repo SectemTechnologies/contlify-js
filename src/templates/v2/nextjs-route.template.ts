@@ -6,8 +6,12 @@
  * All Contlify logic lives inside node_modules/contlify.
  * Configuration is resolved from contlify.config.ts via the active config cache.
  */
-export function getNextjsV2RouteTemplate(): string {
-  return `import "../../../../../../contlify.config";
+export function getNextjsV2RouteTemplate(baseDir: string = "src"): string {
+  const importPath = baseDir === "src"
+    ? `import "../../../../../../contlify.config";`
+    : `import "../../../../../contlify.config";`;
+
+  return `${importPath}
 import { createNextHandler } from "contlify/next";
 
 export const dynamic = "force-dynamic";

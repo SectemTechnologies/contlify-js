@@ -1,4 +1,5 @@
 import { AdapterError } from "../errors/adapter-error.js";
+import { NotFoundError } from "../errors/not-found-error.js";
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
 import { slugify } from "../utils/slugify.js";
@@ -366,6 +367,15 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
         );
       }
 
+      const existingPost = await db.prepare(
+        `SELECT * FROM contlify_posts WHERE id = ? OR slug = ? LIMIT 1`
+      ).bind(...cleanBindParams([idOrSlug, idOrSlug])).first<RawPostRow>();
+
+      if (!existingPost) {
+        throw new NotFoundError(`Post not found with ID or slug: ${idOrSlug}`);
+      }
+      const postId = existingPost.id;
+
       const now = new Date().toISOString();
       const parts: string[] = [];
       const params: unknown[] = [];
@@ -394,25 +404,118 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
         parts.push("slug=?");
         params.push(slugify((payload.custom_slug ?? payload.slug) as string));
       }
+
+      if (payload.author !== undefined) {
+        let authorId: string | null = null;
+        if (typeof payload.author === "string") {
+          const aSlug = slugify(payload.author);
+          authorId = `author_${aSlug}`;
+          await db.prepare(
+            `INSERT INTO contlify_authors (id, name, slug, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (slug) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`
+          ).bind(...cleanBindParams([authorId, payload.author, aSlug, now, now])).run();
+        } else if (payload.author && typeof payload.author === "object") {
+          const authorObj = payload.author as Record<string, unknown>;
+          const aName = (authorObj.name as string | undefined) || "";
+          const aSlug = authorObj.slug ? slugify(authorObj.slug as string) : slugify(aName);
+          authorId = (authorObj.id as string | undefined) || (authorObj.externalId as string | undefined) || `author_${aSlug}`;
+          const avatarImg = extractImageUrl(authorObj.avatar ?? authorObj.image ?? authorObj.avatarUrl);
+          await db.prepare(
+            `INSERT INTO contlify_authors (id, name, slug, email, bio, avatar, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (slug) DO UPDATE SET name = excluded.name, email = excluded.email, bio = excluded.bio, avatar = excluded.avatar, updated_at = excluded.updated_at`
+          ).bind(...cleanBindParams([authorId, aName, aSlug, authorObj.email || null, authorObj.bio || null, avatarImg || null, now, now])).run();
+        }
+        parts.push("author_id=?");
+        params.push(authorId);
+      }
+
       parts.push("updated_at=?");
       params.push(now);
 
-      if (parts.length > 1) {
-        params.push(idOrSlug, idOrSlug);
+      if (parts.length > 0) {
+        params.push(postId);
         const cleaned = cleanBindParams(params);
         await db.prepare(
-          `UPDATE contlify_posts SET ${parts.join(", ")} WHERE id=? OR slug=?`
+          `UPDATE contlify_posts SET ${parts.join(", ")} WHERE id=?`
         ).bind(...cleaned).run();
+      }
+
+      if (payload.categories !== undefined) {
+        await db.prepare(`DELETE FROM contlify_post_categories WHERE post_id = ?`).bind(postId).run();
+        const rawCategories = Array.isArray(payload.categories) ? payload.categories : [];
+        for (const c of rawCategories) {
+          let catId: string;
+          let catName: string;
+          let catSlug: string;
+          let catDesc: string | null = null;
+          let catImg: string | null = null;
+          if (typeof c === "string") {
+            catName = c;
+            catSlug = slugify(c);
+            catId = `cat_${catSlug}`;
+          } else {
+            const catObj = c as Record<string, unknown>;
+            catName = (catObj.name as string | undefined) || "";
+            catSlug = catObj.slug ? slugify(catObj.slug as string) : slugify(catName);
+            catId = (catObj.id as string | undefined) || (catObj.externalId as string | undefined) || `cat_${catSlug}`;
+            catDesc = (catObj.description as string | undefined) || null;
+            catImg = extractImageUrl(catObj.coverImage ?? catObj.cover_image ?? catObj.image ?? catObj.imageUrl);
+          }
+          await db.prepare(
+            `INSERT INTO contlify_categories (id, name, slug, description, cover_image, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (slug) DO UPDATE SET name = excluded.name, description = excluded.description, cover_image = COALESCE(excluded.cover_image, contlify_categories.cover_image), updated_at = excluded.updated_at`
+          ).bind(...cleanBindParams([catId, catName, catSlug, catDesc, catImg, now, now])).run();
+
+          const catRow = await db.prepare(`SELECT id FROM contlify_categories WHERE slug = ?`).bind(catSlug).first<{ id: string }>();
+          const finalCatId = catRow?.id ?? catId;
+          await db.prepare(
+            `INSERT OR IGNORE INTO contlify_post_categories (post_id, category_id) VALUES (?, ?)`
+          ).bind(postId, finalCatId).run();
+        }
+      }
+
+      if (payload.tags !== undefined) {
+        await db.prepare(`DELETE FROM contlify_post_tags WHERE post_id = ?`).bind(postId).run();
+        const rawTags = Array.isArray(payload.tags) ? payload.tags : [];
+        for (const t of rawTags) {
+          let tagId: string;
+          let tagName: string;
+          let tagSlug: string;
+          if (typeof t === "string") {
+            tagName = t;
+            tagSlug = slugify(t);
+            tagId = `tag_${tagSlug}`;
+          } else {
+            const tagObj = t as Record<string, unknown>;
+            tagName = (tagObj.name as string | undefined) || "";
+            tagSlug = tagObj.slug ? slugify(tagObj.slug as string) : slugify(tagName);
+            tagId = (tagObj.id as string | undefined) || (tagObj.externalId as string | undefined) || `tag_${tagSlug}`;
+          }
+          await db.prepare(
+            `INSERT INTO contlify_tags (id, name, slug, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (slug) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`
+          ).bind(...cleanBindParams([tagId, tagName, tagSlug, now, now])).run();
+
+          const tagRow = await db.prepare(`SELECT id FROM contlify_tags WHERE slug = ?`).bind(tagSlug).first<{ id: string }>();
+          const finalTagId = tagRow?.id ?? tagId;
+          await db.prepare(
+            `INSERT OR IGNORE INTO contlify_post_tags (post_id, tag_id) VALUES (?, ?)`
+          ).bind(postId, finalTagId).run();
+        }
       }
 
       const newSlug = (payload.custom_slug ?? payload.slug as string | undefined)
         ? slugify((payload.custom_slug ?? payload.slug) as string)
-        : idOrSlug;
+        : existingPost.slug;
 
       return {
-        postId: idOrSlug,
+        postId: existingPost.id,
         slug: newSlug,
-        status: (payload.status as PublishResponse["status"]) ?? "published",
+        status: (payload.status as PublishResponse["status"]) ?? (existingPost.status as PublishResponse["status"]) ?? "published",
         action: "updated",
         url: `/blog/post/${newSlug}`,
       };
@@ -479,10 +582,11 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       if (!db) return null;
 
       const row = await db.prepare(
-        `SELECT p.*, a.name as author_name, a.slug as author_slug
+        `SELECT p.*, a.name as author_name, a.slug as author_slug, a.email as author_email, a.bio as author_bio, a.avatar as author_avatar
          FROM contlify_posts p
          LEFT JOIN contlify_authors a ON p.author_id = a.id
-         WHERE p.id = ? LIMIT 1`
+         WHERE p.id = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
+         LIMIT 1`
       ).bind(...cleanBindParams([id])).first<RawPostRow>();
       if (!row) return null;
       return resolveFullPost(row);
@@ -495,12 +599,12 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const rows = await all<RawPostRow>(
         db.prepare(
           `SELECT p.*, a.name as author_name, a.slug as author_slug, a.email as author_email, a.avatar as author_avatar
-           FROM contlify_posts p
-           LEFT JOIN contlify_authors a ON p.author_id = a.id
-           INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
-           INNER JOIN contlify_categories c ON c.id = pc.category_id
-           WHERE c.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
-           ORDER BY p.published_at DESC`
+            FROM contlify_posts p
+            LEFT JOIN contlify_authors a ON p.author_id = a.id
+            INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
+            INNER JOIN contlify_categories c ON c.id = pc.category_id
+            WHERE c.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
+            ORDER BY p.published_at DESC`
         ).bind(...cleanBindParams([categorySlug]))
       );
       return Promise.all(rows.map((row) => resolveFullPost(row)));
@@ -513,12 +617,12 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const rows = await all<RawPostRow>(
         db.prepare(
           `SELECT p.*, a.name as author_name, a.slug as author_slug, a.email as author_email, a.avatar as author_avatar
-           FROM contlify_posts p
-           LEFT JOIN contlify_authors a ON p.author_id = a.id
-           INNER JOIN contlify_post_tags pt ON p.id = pt.post_id
-           INNER JOIN contlify_tags t ON t.id = pt.tag_id
-           WHERE t.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
-           ORDER BY p.published_at DESC`
+            FROM contlify_posts p
+            LEFT JOIN contlify_authors a ON p.author_id = a.id
+            INNER JOIN contlify_post_tags pt ON p.id = pt.post_id
+            INNER JOIN contlify_tags t ON t.id = pt.tag_id
+            WHERE t.slug = ? AND (p.status = 'published' OR (p.status = 'scheduled' AND datetime(p.published_at) <= datetime('now')))
+            ORDER BY p.published_at DESC`
         ).bind(...cleanBindParams([tagSlug]))
       );
       return Promise.all(rows.map((row) => resolveFullPost(row)));
@@ -562,15 +666,18 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const rows = await all<RawCategoryRow>(
         db.prepare(
           `SELECT c.id, c.name, c.slug, c.description, c.parent_id, c.created_at, c.updated_at,
+             COUNT(DISTINCT pc.post_id) AS post_count,
              COALESCE(
                c.cover_image,
                (SELECT p.cover_image
                 FROM contlify_posts p
-                INNER JOIN contlify_post_categories pc ON p.id = pc.post_id
-                WHERE pc.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
+                INNER JOIN contlify_post_categories pc2 ON p.id = pc2.post_id
+                WHERE pc2.category_id = c.id AND p.cover_image IS NOT NULL AND p.cover_image != ''
                 ORDER BY p.published_at DESC LIMIT 1)
              ) AS cover_image
            FROM contlify_categories c
+           LEFT JOIN contlify_post_categories pc ON pc.category_id = c.id
+           GROUP BY c.id
            ORDER BY c.name ASC`
         )
       );
@@ -627,7 +734,16 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       const db = await getDb();
       if (!db) return [];
 
-      const rows = await all<RawTagRow>(db.prepare("SELECT * FROM contlify_tags ORDER BY name ASC"));
+      const rows = await all<RawTagRow>(
+        db.prepare(
+          `SELECT t.id, t.name, t.slug, t.description, t.created_at, t.updated_at,
+             COUNT(DISTINCT pt.post_id) AS post_count
+           FROM contlify_tags t
+           LEFT JOIN contlify_post_tags pt ON pt.tag_id = t.id
+           GROUP BY t.id
+           ORDER BY t.name ASC`
+        )
+      );
       return rows.map(mapRowToTag);
     },
   };

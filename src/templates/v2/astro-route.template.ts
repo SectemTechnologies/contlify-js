@@ -15,11 +15,14 @@ import { createContlifyHandler } from "contlify";
 
 const handler = createContlifyHandler();
 
-/**
- * Dispatch all HTTP methods to the Contlify handler.
- * For Cloudflare D1: bindContlifyEnv(context.locals.runtime?.env) before dispatching.
- */
 export const ALL: APIRoute = async (context) => {
+  const runtimeEnv = (context.locals as any)?.runtime?.env;
+  if (runtimeEnv) {
+    if (typeof process !== "undefined" && process.env) {
+      Object.assign(process.env, runtimeEnv);
+    }
+    Object.assign(globalThis, runtimeEnv);
+  }
   return handler(context.request);
 };
 

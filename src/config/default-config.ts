@@ -51,7 +51,19 @@ export function resolveConfig(userConfig?: ContlifyConfigInput): ResolvedContlif
   const config = userConfig && Object.keys(userConfig).length > 0
     ? { ...active, ...userConfig }
     : active;
-  const envApiKey = typeof process !== "undefined" ? process?.env?.CONTLIFY_API_KEY : undefined;
+  let envApiKey: string | undefined = undefined;
+  if (typeof process !== "undefined" && process?.env) {
+    envApiKey = process.env.CONTLIFY_API_KEY || (process.env as any)["CONTLIFY_API_KEY"];
+  }
+  if (!envApiKey && typeof (globalThis as any).CONTLIFY_API_KEY === "string") {
+    envApiKey = (globalThis as any).CONTLIFY_API_KEY;
+  }
+  if (!envApiKey) {
+    try {
+      const metaEnv = (new Function("try { return import.meta.env; } catch { return undefined; }"))();
+      envApiKey = metaEnv?.CONTLIFY_API_KEY;
+    } catch {}
+  }
   const apiKey = config.apiKey || envApiKey || "";
 
   let storageConfig = config.storage;

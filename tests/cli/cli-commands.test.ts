@@ -67,7 +67,7 @@ describe("CLI Commands (v2 Hybrid Architecture)", () => {
 
       // Verify route content
       const routeContent = fs.readFileSync(path.join(tempDir, "app/api/contlify/v1/[...path]/route.ts"), "utf-8");
-      expect(routeContent).toContain('import "../../../../../../contlify.config";');
+      expect(routeContent).toContain('import "../../../../../contlify.config";');
       expect(routeContent).toContain('import { createNextHandler } from "contlify/next";');
       expect(routeContent).toContain("const handler = createNextHandler();");
     });

@@ -40,7 +40,7 @@ export interface Author {
   name: string;
   email?: string;
   bio?: string;
-  avatar?: MediaAsset | string;
+  avatar?: string;
   socialLinks?: Record<string, string>;
   createdAt?: string | Date;
   updatedAt?: string | Date;
@@ -54,7 +54,7 @@ export interface Category {
   slug: string;
   name: string;
   description?: string;
-  coverImage?: MediaAsset | string;
+  coverImage?: string;
   parentId?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;

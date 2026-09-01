@@ -96,7 +96,8 @@ function writeEntries(
 
 export function scaffoldProjectV2(options: ScaffoldV2Options): ScaffoldFileResult[] {
   const { projectRoot, overwrite = false, framework, dbType, migrationMode, postgresDeployment, supabaseMode } = options;
-  const manifest = getV2ScaffoldManifest(framework, { dbType, migrationMode, postgresDeployment, supabaseMode });
+  const baseDir = detectBaseDir(projectRoot);
+  const manifest = getV2ScaffoldManifest(framework, { dbType, migrationMode, postgresDeployment, supabaseMode, baseDir });
   return writeEntries(manifest, projectRoot, framework, overwrite);
 }
 
