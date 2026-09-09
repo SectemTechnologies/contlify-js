@@ -13,11 +13,24 @@ import { createContlifyHandler } from "contlify";
 
 const handler = createContlifyHandler();
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+// React Router v7 uses Cloudflare's module Worker format where D1/KV/R2 bindings
+// are passed per-request as context.cloudflare.env — they are NOT on globalThis.
+// Patching them onto globalThis lets createD1Adapter's env scan find the D1
+// binding automatically, regardless of what it is named in wrangler.jsonc.
+function patchCloudflareEnv(context: any) {
+  const env = context?.cloudflare?.env ?? context?.env;
+  if (env && typeof env === "object") {
+    Object.assign(globalThis, env);
+  }
+}
+
+export const loader = async ({ request, context }: LoaderFunctionArgs) => {
+  patchCloudflareEnv(context);
   return handler(request);
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+export const action = async ({ request, context }: ActionFunctionArgs) => {
+  patchCloudflareEnv(context);
   return handler(request);
 };
 `;

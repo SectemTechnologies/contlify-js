@@ -16,13 +16,21 @@ import { createContlifyHandler } from "contlify";
 const handler = createContlifyHandler();
 
 export const ALL: APIRoute = async (context) => {
-  const runtimeEnv = (context.locals as any)?.runtime?.env;
-  if (runtimeEnv) {
-    if (typeof process !== "undefined" && process.env) {
-      Object.assign(process.env, runtimeEnv);
+  try {
+    // @ts-ignore
+    process.loadEnvFile?.();
+    // @ts-ignore
+    process.loadEnvFile?.(".env.local");
+  } catch {}
+  try {
+    const runtimeEnv = (context.locals as any)?.runtime?.env;
+    if (runtimeEnv) {
+      if (typeof process !== "undefined" && process.env) {
+        Object.assign(process.env, runtimeEnv);
+      }
+      Object.assign(globalThis, runtimeEnv);
     }
-    Object.assign(globalThis, runtimeEnv);
-  }
+  } catch {}
   return handler(context.request);
 };
 

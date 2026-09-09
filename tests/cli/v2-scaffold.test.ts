@@ -79,6 +79,15 @@ describe("v2 Scaffold Templates & Manifests", () => {
       expect(content).not.toContain('dbProvider');
     });
 
+    it("should generate valid config for mongodb (astro)", () => {
+      const content = getContlifyConfigTemplate("mongodb", "skip", "node", undefined, "astro");
+      expect(content).toContain('driver: "mongodb"');
+      expect(content).toContain('uri: process.env["MONGODB_URI"] || (import.meta as any).env?.MONGODB_URI');
+      expect(content).toContain('dbName: process.env["MONGODB_DB_NAME"] ?? "contlify"');
+      expect(content).not.toContain('deployment: "cloudflare"');
+      expect(content).not.toContain('dbProvider');
+    });
+
     it("should include autoMigrate: true when mode is auto", () => {
       const content = getContlifyConfigTemplate("postgres", "auto");
       expect(content).toContain("autoMigrate: true");
@@ -87,6 +96,49 @@ describe("v2 Scaffold Templates & Manifests", () => {
     it("should NOT include autoMigrate when mode is sql", () => {
       const content = getContlifyConfigTemplate("postgres", "sql");
       expect(content).not.toContain("autoMigrate: true");
+    });
+
+    it("should generate valid config for Astro with correct env access patterns across all adapters", () => {
+      // Postgres (cloudflare) — uses lazy getSql() factory + get apiKey() getter
+      // because Cloudflare Worker secrets are only available per-request, not at module load time.
+      const pgCf = getContlifyConfigTemplate("postgres", "skip", "cloudflare", "postgres", "astro");
+      expect(pgCf).toContain('process.loadEnvFile');
+      expect(pgCf).toContain('(globalThis as any).DATABASE_URL');
+      expect(pgCf).toContain('get apiKey()');
+      expect(pgCf).toContain('(globalThis as any).CONTLIFY_API_KEY');
+      expect(pgCf).not.toContain('const _sql = neon('); // must NOT call neon() at module load time
+
+      // Postgres (node) — non-Cloudflare Astro still uses import.meta.env
+      const pgNode = getContlifyConfigTemplate("postgres", "skip", "node", "postgres", "astro");
+      expect(pgNode).toContain('(import.meta as any).env?.DATABASE_URL');
+      expect(pgNode).toContain('(import.meta as any).env?.CONTLIFY_API_KEY');
+
+      // Supabase (cloudflare) — Supabase URL/key still via import.meta.env,
+      // but CONTLIFY_API_KEY uses get apiKey() getter for Cloudflare.
+      const supabase = getContlifyConfigTemplate("supabase", "skip", "cloudflare", "client", "astro");
+      expect(supabase).toContain('(import.meta as any).env?.SUPABASE_URL');
+      expect(supabase).toContain('(import.meta as any).env?.SUPABASE_SECRET_KEY');
+      expect(supabase).toContain('get apiKey()');
+      expect(supabase).toContain('(globalThis as any).CONTLIFY_API_KEY');
+
+      // MongoDB (cloudflare) — MONGODB_URI via import.meta.env, apiKey via getter
+      const mongoCf = getContlifyConfigTemplate("mongodb", "skip", "cloudflare", "postgres", "astro");
+      expect(mongoCf).toContain('(import.meta as any).env?.MONGODB_URI');
+      expect(mongoCf).toContain('get apiKey()');
+      expect(mongoCf).toContain('(globalThis as any).CONTLIFY_API_KEY');
+      expect(mongoCf).not.toContain('deployment: "cloudflare"');
+
+      // MongoDB (node) — non-Cloudflare still uses import.meta.env throughout
+      const mongoNode = getContlifyConfigTemplate("mongodb", "skip", "node", "postgres", "astro");
+      expect(mongoNode).toContain('(import.meta as any).env?.MONGODB_URI');
+      expect(mongoNode).toContain('(import.meta as any).env?.CONTLIFY_API_KEY');
+
+      // D1 — passes full globalThis so createD1Adapter scans for any binding name;
+      // apiKey uses get apiKey() getter (Cloudflare secrets are per-request).
+      const d1 = getContlifyConfigTemplate("d1", "skip", "cloudflare", "postgres", "astro");
+      expect(d1).toContain('(globalThis as any)');
+      expect(d1).toContain('get apiKey()');
+      expect(d1).toContain('(globalThis as any).CONTLIFY_API_KEY');
     });
   });
 
