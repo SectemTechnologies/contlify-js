@@ -25,7 +25,6 @@ export type ContlifyHandler = (req: Request | unknown) => Promise<Response>;
  * @returns Web API standard handler function.
  */
 export function createContlifyHandler(userConfig?: ContlifyConfig): ContlifyHandler {
-  const config = resolveConfig(userConfig);
   const router = new Router();
 
   // Shared authentication middleware pipeline
@@ -126,6 +125,7 @@ export function createContlifyHandler(userConfig?: ContlifyConfig): ContlifyHand
 
   // Main HTTP execution handler
   return async function handler(req: Request | unknown): Promise<Response> {
+    const config = resolveConfig(userConfig);
     const requestContext = await RequestContext.fromRequest(req);
     return await router.dispatch(requestContext, config);
   };
