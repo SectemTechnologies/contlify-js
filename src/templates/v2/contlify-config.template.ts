@@ -58,14 +58,40 @@ import { defineConfig } from "contlify";`;
 function getClientBlock(
   dbType: SupportedDatabaseType,
   postgresDeployment?: PostgresDeployment,
-  framework?: ContlifyFramework
+  framework?: ContlifyFramework,
+  language: "ts" | "js" = "ts"
 ): string {
+  const isJs = language === "js";
   const isAstro = framework === "astro" || framework === "react-router";
   switch (dbType) {
     case "postgres":
       if (postgresDeployment === "cloudflare") {
         if (isAstro) {
-          return `
+        return isJs ? `
+// Lazy factory — only runs when a request arrives and secrets are available.
+// Calling neon() at module load time causes Cloudflare Worker errors because
+// secrets (DATABASE_URL) are not injected until the first request.
+let _sql = null;
+function getSql() {
+  if (!_sql) {
+    const url = process.env["DATABASE_URL"] || globalThis.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL secret is missing in Cloudflare Worker.");
+    _sql = neon(url);
+  }
+  return _sql;
+}
+
+const neonHttpClient = {
+  async query(sql, params) {
+    const sqlClient = getSql();
+    // Supports both sqlClient.query() and sqlClient(sql, params)
+    const rows = typeof sqlClient.query === "function"
+      ? await sqlClient.query(sql, params ?? [])
+      : await sqlClient(sql, params ?? []);
+    return { rows };
+  },
+};
+` : `
 // Lazy factory — only runs when a request arrives and secrets are available.
 // Calling neon() at module load time causes Cloudflare Worker errors because
 // secrets (DATABASE_URL) are not injected until the first request.
@@ -94,7 +120,21 @@ const neonHttpClient = {
 };
 `;
         }
-        return `
+        return isJs ? `
+// neon() uses Neon's serverless HTTP API — one HTTP call per query, fully stateless.
+// Unlike WebSocket pools, it never caches connections across requests, so Cloudflare's
+// per-request I/O isolation is never violated (no Error 1101, no cross-request errors).
+const _sql = neon(process.env["DATABASE_URL"]);
+
+const neonHttpClient = {
+  async query(sql, params) {
+    const rows = typeof _sql.query === "function"
+      ? await _sql.query(sql, params ?? [])
+      : await _sql(sql, params ?? []);
+    return { rows };
+  },
+};
+` : `
 // neon() uses Neon's serverless HTTP API — one HTTP call per query, fully stateless.
 // Unlike WebSocket pools, it never caches connections across requests, so Cloudflare's
 // per-request I/O isolation is never violated (no Error 1101, no cross-request errors).
@@ -114,27 +154,36 @@ const neonHttpClient = {
 `;
       }
       const dbUrl = isAstro
-        ? `process.env["DATABASE_URL"] || (import.meta as any).env?.DATABASE_URL`
+        ? isJs
+          ? `process.env["DATABASE_URL"] || import.meta.env?.DATABASE_URL`
+          : `process.env["DATABASE_URL"] || (import.meta as any).env?.DATABASE_URL`
         : `process.env["DATABASE_URL"]`;
       return `
 // Standard pg Pool — works on Node.js, Vercel, Railway, Render, and Docker.
 // Do NOT use this on Cloudflare Workers; use the Cloudflare deployment option instead.
 const pool = new Pool({ connectionString: ${dbUrl} });
 `;
-    case "supabase":
-      const url = isAstro
-        ? `process.env["SUPABASE_URL"] || (import.meta as any).env?.SUPABASE_URL`
+    case "supabase": {
+      const sbUrl = isAstro
+        ? isJs
+          ? `process.env["SUPABASE_URL"] || import.meta.env?.SUPABASE_URL`
+          : `process.env["SUPABASE_URL"] || (import.meta as any).env?.SUPABASE_URL`
         : `process.env["SUPABASE_URL"]`;
-      const key = isAstro
-        ? `process.env["SUPABASE_SECRET_KEY"] || (import.meta as any).env?.SUPABASE_SECRET_KEY || process.env["SUPABASE_SERVICE_ROLE_KEY"] || (import.meta as any).env?.SUPABASE_SERVICE_ROLE_KEY || process.env["SUPABASE_ANON_KEY"] || (import.meta as any).env?.SUPABASE_ANON_KEY`
+      const sbKey = isAstro
+        ? isJs
+          ? `process.env["SUPABASE_SECRET_KEY"] || import.meta.env?.SUPABASE_SECRET_KEY || process.env["SUPABASE_SERVICE_ROLE_KEY"] || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || process.env["SUPABASE_ANON_KEY"] || import.meta.env?.SUPABASE_ANON_KEY`
+          : `process.env["SUPABASE_SECRET_KEY"] || (import.meta as any).env?.SUPABASE_SECRET_KEY || process.env["SUPABASE_SERVICE_ROLE_KEY"] || (import.meta as any).env?.SUPABASE_SERVICE_ROLE_KEY || process.env["SUPABASE_ANON_KEY"] || (import.meta as any).env?.SUPABASE_ANON_KEY`
         : `process.env["SUPABASE_SECRET_KEY"] || process.env["SUPABASE_SERVICE_ROLE_KEY"] || process.env["SUPABASE_ANON_KEY"]`;
+      const supaClientDecl = isJs
+        ? `let _supabaseClient = null;`
+        : `let _supabaseClient: ReturnType<typeof createClient> | null = null;`;
       return `
 // Lazy Supabase client factory — safely handles Next.js build time when secrets are not yet defined.
-let _supabaseClient: ReturnType<typeof createClient> | null = null;
+${supaClientDecl}
 
 function getSupabaseClient() {
-  const url = ${url};
-  const key = ${key};
+  const url = ${sbUrl};
+  const key = ${sbKey};
   if (!url || !key) return null;
   if (!_supabaseClient) {
     _supabaseClient = createClient(url, key);
@@ -142,6 +191,7 @@ function getSupabaseClient() {
   return _supabaseClient;
 }
 `;
+    }
     case "d1":
       return "";
     case "mongodb":
@@ -152,8 +202,10 @@ function getSupabaseClient() {
 function getStorageBlock(
   dbType: SupportedDatabaseType,
   postgresDeployment?: PostgresDeployment,
-  framework?: ContlifyFramework
+  framework?: ContlifyFramework,
+  language: "ts" | "js" = "ts"
 ): string {
+  const isJs = language === "js";
   const isAstro = framework === "astro" || framework === "react-router";
   switch (dbType) {
     case "postgres":
@@ -177,6 +229,8 @@ function getStorageBlock(
 
     case "d1":
       if (framework === "nextjs") {
+        const envReturn = isJs ? `return ctx?.env;` : `return ctx?.env as any;`;
+        const globalReturn = isJs ? `return globalThis;` : `return (globalThis as any);`;
         return `  storage: {
     driver: "d1",
     // Pass the full Cloudflare env object — createD1Adapter scans it automatically
@@ -185,35 +239,28 @@ function getStorageBlock(
       try {
         const { getCloudflareContext } = await import("@opennextjs/cloudflare");
         const ctx = await getCloudflareContext();
-        return ctx?.env as any;
+        ${envReturn}
       } catch {
-        return (globalThis as any);
+        ${globalReturn}
       }
     },
   },`;
       }
-      if (isAstro) {
-        return `  storage: {
-    driver: "d1",
-    // Pass the full runtime environment object — createD1Adapter scans all bindings
-    // automatically, so it works regardless of the D1 binding name in wrangler.jsonc.
-    dbProvider: async () => {
-      return (globalThis as any);
-    },
-  },`;
-      }
+      const globalRef = isJs ? `globalThis` : `(globalThis as any)`;
       return `  storage: {
     driver: "d1",
     // Pass the full runtime environment object — createD1Adapter scans all bindings
     // automatically, so it works regardless of the D1 binding name in wrangler.jsonc.
     dbProvider: async () => {
-      return (globalThis as any);
+      return ${globalRef};
     },
   },`;
 
-    case "mongodb":
+    case "mongodb": {
       const mongoUri = isAstro
-        ? `process.env["MONGODB_URI"] || (import.meta as any).env?.MONGODB_URI`
+        ? isJs
+          ? `process.env["MONGODB_URI"] || import.meta.env?.MONGODB_URI`
+          : `process.env["MONGODB_URI"] || (import.meta as any).env?.MONGODB_URI`
         : `process.env["MONGODB_URI"]`;
       const mongoDbName = `process.env["MONGODB_DB_NAME"] ?? "contlify"`;
 
@@ -230,6 +277,7 @@ function getStorageBlock(
     uri: ${mongoUri},
     dbName: ${mongoDbName},
   },`;
+    }
   }
 }
 
@@ -318,12 +366,14 @@ export function getContlifyConfigTemplate(
   migrationMode: V2MigrationMode = "skip",
   postgresDeployment: PostgresDeployment = "cloudflare",
   _supabaseMode?: SupabaseConnectionMode,
-  framework?: ContlifyFramework
+  framework?: ContlifyFramework,
+  language: "ts" | "js" = "ts"
 ): string {
+  const isJs = language === "js";
   const isAstro = framework === "astro" || framework === "react-router";
   const importBlock = getImportBlock(dbType, postgresDeployment);
-  const clientBlock = getClientBlock(dbType, postgresDeployment, framework);
-  const storageBlock = getStorageBlock(dbType, postgresDeployment, framework);
+  const clientBlock = getClientBlock(dbType, postgresDeployment, framework, language);
+  const storageBlock = getStorageBlock(dbType, postgresDeployment, framework, language);
   const autoMigrateBlock = getAutoMigrateBlock(migrationMode, dbType);
   const envComment = getEnvComment(dbType, postgresDeployment);
 
@@ -344,12 +394,14 @@ try {
   // For Astro on Cloudflare, use a getter so apiKey is read per-request after secrets are injected.
   // On Node-based Astro (and all non-Cloudflare deployments), a static read is fine.
   const isCloudflare = postgresDeployment === "cloudflare" || dbType === "d1";
+  const globalThisRef = isJs ? `globalThis.CONTLIFY_API_KEY` : `(globalThis as any).CONTLIFY_API_KEY`;
+  const importMetaRef = isJs ? `import.meta.env?.CONTLIFY_API_KEY` : `(import.meta as any).env?.CONTLIFY_API_KEY`;
   const apiKey = isAstro && isCloudflare
     ? `get apiKey() {
-    return process.env["CONTLIFY_API_KEY"] || (globalThis as any).CONTLIFY_API_KEY || "";
+    return process.env["CONTLIFY_API_KEY"] || ${globalThisRef} || "";
   }`
     : isAstro
-    ? `apiKey: process.env["CONTLIFY_API_KEY"] || (import.meta as any).env?.CONTLIFY_API_KEY`
+    ? `apiKey: process.env["CONTLIFY_API_KEY"] || ${importMetaRef}`
     : `apiKey: process.env["CONTLIFY_API_KEY"]`;
 
   return `${envComment}

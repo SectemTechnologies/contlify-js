@@ -24,6 +24,8 @@ describe("CLI Commands (v2 Hybrid Architecture)", () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "contlify-cli-test-"));
+    // Ensure all tests run in TS mode by default so they match .ts assertions
+    fs.writeFileSync(path.join(tempDir, "tsconfig.json"), JSON.stringify({}));
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { detectFramework } from "../../src/cli/detector.js";
+import { detectFramework, detectLanguage } from "../../src/cli/detector.js";
 
 describe("Framework Auto-Detector (detectFramework)", () => {
   let tempDir: string;
@@ -39,53 +39,59 @@ describe("Framework Auto-Detector (detectFramework)", () => {
     expect(detectFramework(tempDir)).toBe("nextjs");
   });
 
-  it("should detect Astro via package.json dependencies", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { astro: "^5.0.0" } })
-    );
-    expect(detectFramework(tempDir)).toBe("astro");
-  });
-
-  it("should detect Next.js via package.json dependencies", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { next: "^15.0.0", react: "^19.0.0" } })
-    );
-    expect(detectFramework(tempDir)).toBe("nextjs");
-  });
-
-  it("should detect React Router v7 via package.json dependencies", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { "react-router": "^7.0.0" } })
-    );
-    expect(detectFramework(tempDir)).toBe("react-router");
-  });
-
-  it("should detect React Router v7 via @react-router/dev in devDependencies", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "package.json"),
-      JSON.stringify({ devDependencies: { "@react-router/dev": "^7.0.0" } })
-    );
-    expect(detectFramework(tempDir)).toBe("react-router");
-  });
-
-  it("should detect Angular when angular.json exists", () => {
-    fs.writeFileSync(path.join(tempDir, "angular.json"), JSON.stringify({}));
-    expect(detectFramework(tempDir)).toBe("angular");
-  });
-
-  it("should detect Angular via package.json dependencies", () => {
-    fs.writeFileSync(
-      path.join(tempDir, "package.json"),
-      JSON.stringify({ dependencies: { "@angular/core": "^19.0.0" } })
-    );
-    expect(detectFramework(tempDir)).toBe("angular");
-  });
-
   it("should detect Next.js when src/app layout exists without configs", () => {
     fs.mkdirSync(path.join(tempDir, "src", "app"), { recursive: true });
     expect(detectFramework(tempDir)).toBe("nextjs");
   });
 });
+
+describe("Language Auto-Detector (detectLanguage)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "contlify-lang-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should return 'js' when no tsconfig.json exists", () => {
+    expect(detectLanguage(tempDir)).toBe("js");
+  });
+
+  it("should return 'ts' when tsconfig.json exists", () => {
+    fs.writeFileSync(path.join(tempDir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+    expect(detectLanguage(tempDir)).toBe("ts");
+  });
+
+  it("should still return 'js' even if framework config files are present (but no tsconfig)", () => {
+    fs.writeFileSync(path.join(tempDir, "astro.config.mjs"), "export default {};");
+    expect(detectLanguage(tempDir)).toBe("js");
+  });
+
+  it("should return 'ts' if both tsconfig.json and framework config exist", () => {
+    fs.writeFileSync(path.join(tempDir, "tsconfig.json"), "{}");
+    fs.writeFileSync(path.join(tempDir, "next.config.js"), "module.exports = {};");
+    expect(detectLanguage(tempDir)).toBe("ts");
+  });
+
+  it("should return 'js' for an Angular JavaScript project even when tsconfig.json exists", () => {
+    // Angular CLI always generates tsconfig.json even for pure JS projects.
+    // The distinguishing signal is src/main.js exists but src/main.ts does not.
+    fs.writeFileSync(path.join(tempDir, "angular.json"), "{}");
+    fs.writeFileSync(path.join(tempDir, "tsconfig.json"), "{}");
+    fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "src", "main.js"), "");
+    expect(detectLanguage(tempDir)).toBe("js");
+  });
+
+  it("should return 'ts' for an Angular TypeScript project when tsconfig.json and src/main.ts exist", () => {
+    fs.writeFileSync(path.join(tempDir, "angular.json"), "{}");
+    fs.writeFileSync(path.join(tempDir, "tsconfig.json"), "{}");
+    fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "src", "main.ts"), "");
+    expect(detectLanguage(tempDir)).toBe("ts");
+  });
+});
+

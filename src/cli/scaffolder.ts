@@ -20,6 +20,7 @@ export interface ScaffoldV2Options {
   migrationMode?: V2ScaffoldOptions["migrationMode"];
   postgresDeployment?: PostgresDeployment;
   supabaseMode?: SupabaseConnectionMode;
+  language?: "ts" | "js";
 }
 
 export type ScaffoldOptions = ScaffoldV2Options;
@@ -31,7 +32,7 @@ export function detectBaseDir(projectRoot: string): string {
 }
 
 function resolveTargetPath(framework: ContlifyFramework, projectRoot: string, relativePath: string): string {
-  if (relativePath === "contlify.config.ts") {
+  if (relativePath === "contlify.config.ts" || relativePath === "contlify.config.js") {
     return relativePath;
   }
   const baseDir = detectBaseDir(projectRoot);
@@ -95,9 +96,9 @@ function writeEntries(
 }
 
 export function scaffoldProjectV2(options: ScaffoldV2Options): ScaffoldFileResult[] {
-  const { projectRoot, overwrite = false, framework, dbType, migrationMode, postgresDeployment, supabaseMode } = options;
+  const { projectRoot, overwrite = false, framework, dbType, migrationMode, postgresDeployment, supabaseMode, language } = options;
   const baseDir = detectBaseDir(projectRoot);
-  const manifest = getV2ScaffoldManifest(framework, { dbType, migrationMode, postgresDeployment, supabaseMode, baseDir });
+  const manifest = getV2ScaffoldManifest(framework, { dbType, migrationMode, postgresDeployment, supabaseMode, baseDir, language });
   return writeEntries(manifest, projectRoot, framework, overwrite);
 }
 

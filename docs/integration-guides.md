@@ -22,7 +22,7 @@ This guide explains how to use `contlify` to query content directly in your fron
 
 ## 1. Core Query API Overview
 
-Contlify exports high-level, zero-boilerplate functions that automatically resolve your `contlify.config.ts` storage settings:
+Contlify exports high-level, zero-boilerplate functions that automatically resolve your `contlify.config.ts` (or `contlify.config.js` in pure JavaScript projects) storage settings:
 
 ```typescript
 import {

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { scaffoldProjectV2 } from "./scaffolder.js";
-import { detectFramework } from "./detector.js";
+import { detectFramework, detectLanguage } from "./detector.js";
 import { select, confirm } from "./prompts.js";
 import { getMigrationSql, type SupportedDatabaseType } from "../migrations/index.js";
 import type { ContlifyFramework } from "../templates/framework.js";
@@ -306,7 +306,11 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log(dim("  ──────────────────────────────────────────────"));
   log("");
 
-  // Step 1: Detect or select site framework
+  // Step 1: Detect project language (TypeScript or JavaScript)
+  const language = detectLanguage(projectRoot);
+  const cfgExt = language === "ts" ? "ts" : "js";
+
+  // Step 2: Detect or select site framework
   const detected = detectFramework(projectRoot);
   let framework: ContlifyFramework;
 
@@ -358,19 +362,19 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   log("");
   info(`  ℹ️  The following files will be generated in your ${framework} project:`);
   const dbLabel = DB_CHOICES.find(c => c.value === dbType)?.label ?? dbType;
-  log(`     ${dim("contlify.config.ts")} — Contlify declarative configuration (${dbLabel})`);
+  log(`     ${dim(`contlify.config.${cfgExt}`)} — Contlify declarative configuration (${dbLabel})`);
   if (dbType === "supabase" || migrationMode === "sql") {
     log(`     ${dim("schema.sql")} — Database tables schema`);
   }
 
   if (framework === "nextjs") {
-    log(`     ${dim("app/api/contlify/v1/[...path]/route.ts")} — Next.js App Router gateway`);
+    log(`     ${dim(`app/api/contlify/v1/[...path]/route.${cfgExt}`)} — Next.js App Router gateway`);
   } else if (framework === "astro") {
-    log(`     ${dim("src/pages/api/contlify/v1/[...path].ts")} — Astro API endpoint gateway`);
+    log(`     ${dim(`src/pages/api/contlify/v1/[...path].${cfgExt}`)} — Astro API endpoint gateway`);
   } else if (framework === "react-router") {
-    log(`     ${dim("app/routes/api.contlify.$.ts")} — React Router v7 gateway`);
+    log(`     ${dim(`app/routes/api.contlify.$.${cfgExt}`)} — React Router v7 gateway`);
   } else if (framework === "angular") {
-    log(`     ${dim("server.contlify.ts")} — Angular SSR Express gateway`);
+    log(`     ${dim(`server.contlify.${cfgExt}`)} — Angular SSR Express gateway`);
   }
   log("");
 
@@ -396,9 +400,9 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
   // Step 6: Scaffold files (v2 minimal: config + route only)
   log("");
   let overwrite = flags.overwrite ?? false;
-  const configPath = path.join(projectRoot, "contlify.config.ts");
+  const configPath = path.join(projectRoot, `contlify.config.${cfgExt}`);
   if (!overwrite && fs.existsSync(configPath)) {
-    overwrite = await confirm("  ⚠️  contlify.config.ts already exists. Overwrite with new configuration?", false);
+    overwrite = await confirm(`  ⚠️  contlify.config.${cfgExt} already exists. Overwrite with new configuration?`, false);
   }
 
   info("  📁 Scaffolding files...");
@@ -410,6 +414,7 @@ export async function runInit(projectRoot: string, flags: { overwrite?: boolean 
     dbType,
     migrationMode,
     postgresDeployment,
+    language,
   });
 
   for (const result of results) {

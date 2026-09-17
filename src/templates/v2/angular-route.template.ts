@@ -6,9 +6,14 @@
  * All Contlify logic lives inside node_modules/contlify.
  * Configuration is resolved from contlify.config.ts via the active config cache.
  */
-export function getAngularV2RouteTemplate(): string {
-  return `import "./contlify.config";
-import type { Express } from "express";
+export function getAngularV2RouteTemplate(language: "ts" | "js" = "ts"): string {
+  const isJs = language === "js";
+  const expressImport = isJs ? "" : `\nimport type { Express } from "express";`;
+  const appType = isJs ? `app` : `app: Express`;
+  const voidReturn = isJs ? "" : ": void";
+  const errCast = isJs ? `e` : `e: any`;
+
+  return `import "./contlify.config";${expressImport}
 import {
   createContlifyHandler,
   createNodeMiddleware,
@@ -32,13 +37,13 @@ const contlifyHandler = createContlifyHandler();
  * mountContlify(app);
  * \`\`\`
  */
-export function mountContlify(app: Express): void {
+export function mountContlify(${appType})${voidReturn} {
   // Public Read Routes for Client & SSR components
   app.get("/api/contlify/v1/posts", async (_req, res) => {
     try {
       const posts = await getAllPosts();
       res.json({ success: true, data: posts });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -51,7 +56,7 @@ export function mountContlify(app: Express): void {
         return;
       }
       res.json({ success: true, data: post });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -60,7 +65,7 @@ export function mountContlify(app: Express): void {
     try {
       const categories = await getCategories();
       res.json({ success: true, data: categories });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -69,7 +74,7 @@ export function mountContlify(app: Express): void {
     try {
       const posts = await getPostsByCategory(req.params.slug);
       res.json({ success: true, data: posts });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -78,7 +83,7 @@ export function mountContlify(app: Express): void {
     try {
       const tags = await getTags();
       res.json({ success: true, data: tags });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
@@ -87,7 +92,7 @@ export function mountContlify(app: Express): void {
     try {
       const posts = await getPostsByTag(req.params.slug);
       res.json({ success: true, data: posts });
-    } catch (e: any) {
+    } catch (${errCast}) {
       res.status(500).json({ success: false, error: e.message });
     }
   });

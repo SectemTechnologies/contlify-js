@@ -42,19 +42,26 @@ Initialize Contlify inside your existing web project in seconds:
 npx contlify init
 ```
 
-The setup wizard auto-detects your web framework, prompts for your database and hosting target, and generates exactly **2 integration files**:
+The setup wizard auto-detects your web framework and language (TypeScript or JavaScript), prompts for your database and hosting target, and generates exactly **2 integration files**:
 
-1. **`contlify.config.ts`** (Project root) — Declarative configuration
+1. **`contlify.config.ts`** or **`contlify.config.js`** (Project root) — Declarative configuration
 2. **Framework Gateway Route** — Thin bridge to Contlify's API engine
 
 ### Gateway Locations by Framework
 
-| Framework | Gateway File Path |
-| :--- | :--- |
-| **Next.js** | `app/api/contlify/v1/[...path]/route.ts` (or `src/app/...`) |
-| **Astro** | `src/pages/api/contlify/v1/[...path].ts` |
-| **React Router v7** | `app/routes/api.contlify.$.ts` |
-| **Angular (SSR)** | `server.contlify.ts` |
+| Framework | TypeScript Gateway (`.ts`) | JavaScript Gateway (`.js`) |
+| :--- | :--- | :--- |
+| **Next.js** | `app/api/contlify/v1/[...path]/route.ts` | `app/api/contlify/v1/[...path]/route.js` |
+| **Astro** | `src/pages/api/contlify/v1/[...path].ts` | `src/pages/api/contlify/v1/[...path].js` |
+| **React Router v7** | `app/routes/api.contlify.$.ts` | `app/routes/api.contlify.$.js` |
+| **Angular (SSR)** | `server.contlify.ts` | `server.contlify.js` |
+
+### 🟨 Pure JavaScript Project Support
+
+Contlify provides full, first-class support for pure JavaScript projects:
+- **Automatic Language Detection**: `npx contlify init` automatically detects whether your project uses TypeScript or JavaScript (including pure JS setups in Next.js, Astro, React Router, and Angular) and generates matching `.js` integration files.
+- **Zero TypeScript Requirement**: Pure JS projects do not require `typescript`, `@types/node`, or `tsconfig.json`.
+- **Pure JavaScript Config**: Uses standard ES module syntax in `contlify.config.js`.
 
 Use `--overwrite` to replace existing configuration files:
 ```bash

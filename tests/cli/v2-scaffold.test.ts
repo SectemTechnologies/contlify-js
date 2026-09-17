@@ -309,4 +309,69 @@ describe("v2 Scaffold Templates & Manifests", () => {
       expect(fs.existsSync(path.join(tempDir, "server.contlify.ts"))).toBe(true);
     });
   });
+
+  // ─── JavaScript Scaffolding ───────────────────────────────────────────────
+  describe("JavaScript project support (language: 'js')", () => {
+    it("should generate contlify.config.js (not .ts) for JS projects", () => {
+      const manifest = getNextjsV2ScaffoldManifest({ dbType: "postgres", language: "js" });
+      expect(manifest[0].relativePath).toBe("contlify.config.js");
+      expect(manifest[1].relativePath).toMatch(/\.js$/);
+    });
+
+    it("getContlifyConfigTemplate should not contain 'as any' in JS mode", () => {
+      const js = getContlifyConfigTemplate("postgres", "skip", "cloudflare", "postgres", "nextjs", "js");
+      expect(js).not.toContain("as any");
+      expect(js).not.toContain(": Promise<");
+      expect(js).not.toContain("<T =");
+    });
+
+    it("getContlifyConfigTemplate D1 JS should use globalThis (no type cast)", () => {
+      const js = getContlifyConfigTemplate("d1", "skip", "cloudflare", "postgres", "astro", "js");
+      expect(js).toContain("return globalThis;");
+      expect(js).not.toContain("(globalThis as any)");
+    });
+
+    it("getContlifyConfigTemplate Supabase JS should not contain typed variable declaration", () => {
+      const js = getContlifyConfigTemplate("supabase", "skip", "cloudflare", "client", "astro", "js");
+      expect(js).toContain("let _supabaseClient = null;");
+      expect(js).not.toContain(": ReturnType<");
+    });
+
+    it("getAstroV2RouteTemplate JS should not contain 'import type'", () => {
+      const js = getAstroV2RouteTemplate("js");
+      expect(js).not.toContain("import type");
+      expect(js).not.toContain(": APIRoute");
+      expect(js).not.toContain("as any");
+    });
+
+    it("getReactRouterV2RouteTemplate JS should not contain 'import type' or typed args", () => {
+      const js = getReactRouterV2RouteTemplate("js");
+      expect(js).not.toContain("import type");
+      expect(js).not.toContain(": LoaderFunctionArgs");
+      expect(js).not.toContain(": ActionFunctionArgs");
+      expect(js).toContain("patchCloudflareEnv");
+    });
+
+    it("getAngularV2RouteTemplate JS should not contain 'import type' or TS types", () => {
+      const js = getAngularV2RouteTemplate("js");
+      expect(js).not.toContain("import type");
+      expect(js).not.toContain(": Express");
+      expect(js).not.toContain(": void");
+      expect(js).not.toContain(": any");
+    });
+
+    it("all four frameworks should produce .js file paths when language is 'js'", () => {
+      const nextManifest = getNextjsV2ScaffoldManifest({ dbType: "d1", language: "js" });
+      const astroManifest = getAstroV2ScaffoldManifest({ dbType: "d1", language: "js" });
+      const rrManifest = getReactRouterV2ScaffoldManifest({ dbType: "d1", language: "js" });
+      const angularManifest = getAngularV2ScaffoldManifest({ dbType: "postgres", language: "js" });
+
+      for (const manifest of [nextManifest, astroManifest, rrManifest, angularManifest]) {
+        for (const entry of manifest) {
+          expect(entry.relativePath).toMatch(/\.js$/);
+          expect(entry.relativePath).not.toMatch(/\.ts$/);
+        }
+      }
+    });
+  });
 });

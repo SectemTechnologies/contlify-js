@@ -99,3 +99,32 @@ export function detectFramework(projectRoot: string): ContlifyFramework | null {
 
   return null;
 }
+
+/**
+ * Detects whether the project is TypeScript or JavaScript by checking for tsconfig.json.
+ *
+ * Special case: Angular CLI always requires a tsconfig.json even for pure JavaScript projects.
+ * If the project has `src/main.js` but no `src/main.ts`, it is an Angular JavaScript project
+ * and should return "js" regardless of the presence of tsconfig.json.
+ *
+ * @param projectRoot Absolute path to the user's project root directory.
+ * @returns "ts" if tsconfig.json exists (and not an Angular JS project), "js" otherwise.
+ */
+
+export function detectLanguage(projectRoot: string): "ts" | "js" {
+  // Angular CLI generates tsconfig.json even for pure JavaScript projects.
+  // Detect Angular JS by checking for src/main.js without a src/main.ts counterpart.
+  const isAngularJs =
+    fs.existsSync(path.join(projectRoot, "angular.json")) &&
+    fs.existsSync(path.join(projectRoot, "src", "main.js")) &&
+    !fs.existsSync(path.join(projectRoot, "src", "main.ts"));
+
+  if (isAngularJs) {
+    return "js";
+  }
+
+  if (fs.existsSync(path.join(projectRoot, "tsconfig.json"))) {
+    return "ts";
+  }
+  return "js";
+}
