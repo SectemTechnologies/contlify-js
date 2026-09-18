@@ -1,7 +1,7 @@
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { NotFoundError } from "../errors/not-found-error.js";
 import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
-import { slugify } from "../utils/slugify.js";
+import { slugify, resolveUniqueSlug } from "../utils/slugify.js";
 
 /**
  * Minimal PostgreSQL client interface.
@@ -169,8 +169,21 @@ export function createPostgresAdapter(client: PostgresClientLike): ContlifyAdapt
     async createPost(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse> {
       await ensurePostgresSchema(client);
       const id = (payload.externalId as string | undefined) ?? `post_${Date.now()}`;
-      const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
+      const baseSlug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
+
+      // Resolve unique slug: if baseSlug is already taken by a DIFFERENT post, append -1, -2, etc.
+      const slug = await resolveUniqueSlug(baseSlug, id, async (candidate) => {
+        try {
+          const res = await client.query<{ id: string }>(
+            `SELECT id FROM contlify_posts WHERE slug = $1 LIMIT 1`,
+            [candidate]
+          );
+          return res.rows[0]?.id ?? null;
+        } catch {
+          return null;
+        }
+      });
 
       const seoData = payload.seo ? JSON.stringify(payload.seo) : null;
       const customFields = payload.customFields ? JSON.stringify(payload.customFields) : null;

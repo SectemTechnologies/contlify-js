@@ -2,7 +2,7 @@ import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author
 import { AdapterError } from "../errors/adapter-error.js";
 import { NotFoundError } from "../errors/not-found-error.js";
 import { extractImageUrl } from "./row-mapper.js";
-import { slugify } from "../utils/slugify.js";
+import { slugify, resolveUniqueSlug } from "../utils/slugify.js";
 
 /**
  * Minimal MongoDB collection interface.
@@ -170,8 +170,21 @@ export function createMongoAdapter(dbProvider: MongoDbProvider): ContlifyAdapter
         throw new AdapterError("MongoDB database connection not available. Please check your MONGODB_URI environment variable.");
       }
 
-      const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
+      const baseSlug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
+      const incomingId = (payload.externalId as string | undefined);
+
+      // Resolve unique slug: if baseSlug is already taken by a DIFFERENT post, append -1, -2, etc.
+      const slug = await resolveUniqueSlug(baseSlug, incomingId, async (candidate) => {
+        try {
+          const postsCol = await getPostsCol();
+          if (!postsCol) return null;
+          const existing = await postsCol.findOne({ slug: candidate });
+          return (existing?.id as string | undefined) ?? null;
+        } catch {
+          return null;
+        }
+      });
 
       const authorDoc = payload.author
         ? typeof payload.author === "string"

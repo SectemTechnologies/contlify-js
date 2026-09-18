@@ -2,7 +2,7 @@ import { AdapterError } from "../errors/adapter-error.js";
 import { NotFoundError } from "../errors/not-found-error.js";
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
-import { slugify } from "../utils/slugify.js";
+import { slugify, resolveUniqueSlug } from "../utils/slugify.js";
 
 /**
  * Minimal Cloudflare D1 Database binding interface.
@@ -235,8 +235,16 @@ export function createD1Adapter(dbProvider: D1DatabaseProvider): ContlifyAdapter
       }
 
       const id = (payload.externalId as string | undefined) ?? `post_${Date.now()}`;
-      const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
+      const baseSlug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
+
+      // Resolve unique slug: if baseSlug is already taken by a DIFFERENT post, append -1, -2, etc.
+      const slug = await resolveUniqueSlug(baseSlug, id, async (candidate) => {
+        const row = await db.prepare(
+          `SELECT id FROM contlify_posts WHERE slug = ?`
+        ).bind(candidate).first<{ id: string }>();
+        return row?.id ?? null;
+      });
 
       const title = payload.title || "Untitled Post";
       const subtitle = payload.subtitle ?? null;

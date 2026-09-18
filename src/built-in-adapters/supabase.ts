@@ -1,6 +1,6 @@
 import type { ContlifyAdapter, PublishPostPayload, PublishResponse, Post, Author, Category, Tag, PostQueryOptions } from "../index.js";
 import { mapRowToPost, mapRowToAuthor, mapRowToCategory, mapRowToTag, extractImageUrl, type RawPostRow, type RawAuthorRow, type RawCategoryRow, type RawTagRow } from "./row-mapper.js";
-import { slugify } from "../utils/slugify.js";
+import { slugify, resolveUniqueSlug } from "../utils/slugify.js";
 import { AdapterError } from "../errors/adapter-error.js";
 import { NotFoundError } from "../errors/not-found-error.js";
 
@@ -188,8 +188,24 @@ export function createSupabaseAdapter(clientProvider: any): ContlifyAdapter {
 
     async createPost(payload: PublishPostPayload & Record<string, unknown>): Promise<PublishResponse> {
       const client = await getClient(true);
-      const slug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
+      const baseSlug = slugify((payload.custom_slug ?? payload.slug ?? payload.title) as string);
       const now = new Date().toISOString();
+
+      // Resolve unique slug: if baseSlug is already taken by a DIFFERENT post, append -1, -2, etc.
+      const incomingId = payload.externalId as string | undefined;
+      const slug = await resolveUniqueSlug(baseSlug, incomingId, async (candidate) => {
+        try {
+          const checkQuery = client.from("contlify_posts");
+          if (typeof checkQuery?.select !== "function") return null;
+          const rows = await queryAll<{ id: string }>(
+            checkQuery.select("id").eq("slug", candidate).limit(1),
+            "resolveUniqueSlug check"
+          );
+          return rows[0]?.id ?? null;
+        } catch {
+          return null;
+        }
+      });
 
       // Check if post already exists to reuse its existing ID (prevents foreign key constraint violations on contlify_post_categories)
       let actualPostId = payload.externalId as string | undefined;
